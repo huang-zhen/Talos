@@ -46,4 +46,6 @@ Configuration
     
 Publication
 
-    CodeAnalyzer was used in the research work on a novel technique to mitigate software vulnerabilities, "Talos: Neutralizing Vulnerabilities with Security Workarounds for Rapid Response", which is published in the proceedings of the 37th IEEE Symposium on Security and Privacy (Oakland 2016). 
+    CodeAnalyzer was used in the research work on a novel technique to mitigate software vulnerabilities, 
+    "Talos: Neutralizing Vulnerabilities with Security Workarounds for Rapid Response", which is published 
+    in the proceedings of the 37th IEEE Symposium on Security and Privacy (Oakland 2016). 
