@@ -1,0 +1,34 @@
+This tutorial demonstrates how to use CodeAnalyzer to analyze the source code of lighttpd, an HTTP server.
+
+1. Follow LLVM's document to download and build the source code of LLVM. 
+
+2. Build and install CodeAnalyzer.
+	$ cd Talos/tools
+	$ ./install
+	$ cd ..
+	$ cp -r CodeAnalyzer $LLVM_SRC/projects
+	$ cd $LLVM_SRC
+	$ make; make install
+
+Note that the latest release of CodeAnalyzer works with LLVM 3.5, but CodeAnalyzer was also tested with LLVM 3.3 and LLVM 2.8, which needed the change of the location of certain LLVM header files referenced in CodeAnalyzer and the change of a handful lines of CodeAnalyzer's code, as some LLVM header files and LLVM data structure used by CodeAnalyzer has different locations or names under different versions of LLVM. 
+
+The install script of CodeAnalyzer assumes you use bash as your shell to set up the PATH for CodeAnalyzer's helper scripts and compiler wrappers. If you use a different shell, you might need to change the install script.
+
+By default CodeAnalyzer's C/C++ compiler wrappers, i.e. ~/tools/g++.analyzer and gcc.analyzer, look for CodeAnalyzer's binary executable, a dynamic shared library, under $HOME/llvm/lib directory. So you should change the name of directory in the compiler wrappers, if your build of LLVM is installed in a different directory. Depending on which OS you use, you might need to change the extension name of the CodeAnalyzer binary executable used in the compiler wrappers. For example, libAnalyzer.so should be used for most Linux systems.
+
+3. Follow lighttpd's document to download the source code of lighttpd, and set up the building environment of lighttpd.
+	$ cd lighttpd
+	$ ./configure
+
+4. Run a build of lighttpd to make sure that lighttpd's building environment is configured correctly.
+	$ cd lighttpd
+	$ make clean; make
+
+5. Run CodeAnalyzer on lighttpd's source code.
+	$ export ANALYZER_OUTPUT=lighttpd.out
+	$ analyzergcc
+	$ cd lighttpd
+	$ make clean; make
+	$ origgcc
+
+As you can see, you run CodeAnalyzer by building lighttpd in the same way as you normally build lighttpd, with the help of the analyzergcc script. The output of CodeAnalyzer will be saved in lighttpd.out as specified by the ANALYZER_OUTPUT environmental variable. If you are interested, you can check the log of CodeAnalyzer in /tmp/gcc.log, /tmp/g++.log, and /tmp/opt.log to see how CodeAnalyzer is invoked during the build of lighttpd.
