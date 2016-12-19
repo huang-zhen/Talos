@@ -1,0 +1,10 @@
+#!/bin/bash
+# This script creates a tools directory under the home directory, and sets 
+# the tools directory as the first directory to be searched when any command
+# is to be executed, so that CodeAnalyzer's C/C++ compiler wrappers will be
+# used in place of the original C/C++ compilers, without the need of 
+# changing any Makefile, after analyzergcc is executed.
+# 
+mkdir -f ~/tools
+cp * ~/tools
+echo "PATH=~/tools:$PATH" > ~/.bashrc

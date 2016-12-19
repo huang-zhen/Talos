@@ -1,0 +1,10 @@
+#!/bin/bash
+# This script removes the soft links to CodeAnalyzer's C/C++ compiler wrappers
+# in the ~/tools directory, so that the original C/C++ compilers will be used
+# afterwards.
+#
+rm -f ~/tools/cc
+rm -f ~/tools/gcc
+rm -f ~/tools/g++
+rm -f ~/tools/c++
+

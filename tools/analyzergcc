@@ -1,0 +1,16 @@
+#!/bin/bash
+# This script enforces that CodeAnalyzer's C/C++ compiler wrappers is used as
+# system-wide C/C++ compilers with the help of install script.
+#
+# Run this script before running C/C++ compiler or make for a project to 
+# let CodeAnalyzer analyze the code of the project, just like building the
+# project normally.
+#
+rm -f ~/tools/cc
+rm -f ~/tools/gcc
+rm -f ~/tools/g++
+rm -f ~/tools/c++
+ln -s ~/tools/gcc.analyzer ~/tools/cc
+ln -s ~/tools/gcc.analyzer ~/tools/gcc
+ln -s ~/tools/g++.analyzer ~/tools/g++
+ln -s ~/tools/g++.analyzer ~/tools/c++
