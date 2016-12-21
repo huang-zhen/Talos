@@ -27,7 +27,7 @@ Introduction
     - Programming language interpretor: PHP
     - web browser: firefox
     - email client: evolution
-    - graphics applications: inkscape
+    - graphics application: inkscape
     - messaging application: pidgin
     - network protocol analyzer: wireshark
 
