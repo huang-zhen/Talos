@@ -30,8 +30,8 @@ function analyze {
    #CMD="$LLVMGCC -emit-llvm -g $@"
    CMD="$LLVMGCC -emit-llvm -g $@ -o .$INS_FILE.bc"
    echo $CMD >>  $GCCLOG
-   #`$LLVMGCC -emit-llvm -g $@ -o .$INS_FILE.bc >> $GCCLOG`
-   `$LLVMGCC -emit-llvm -g $@ -o .$INS_FILE.bc >> $GCCLOG`
+   #$LLVMGCC -emit-llvm -g $@ -o .$INS_FILE.bc >> $GCCLOG
+   $LLVMGCC -emit-llvm -g $@ -o .$INS_FILE.bc >> $GCCLOG
    if [[ $? -eq 0 ]]; then
 	CMD="$OPT -load $ANALYZER -Analyzer -o /dev/null .$INS_FILE.bc"
 	echo $CMD >> $GCCLOG
@@ -42,10 +42,10 @@ function analyze {
 		echo "OPT failed on $INS_FILE" >>  $GCCLOG
 		#cp $INS_FILE $INS_FILE.bc
 	fi
-	`$GCC $@ >> $GCCLOG`
+	$GCC $@ >> $GCCLOG
    else
 	echo "$LLVMGCC failed" >>  $GCCLOG
-	`$GCC $@ >> $GCCLOG`
+	$GCC $@ >> $GCCLOG
    fi 
 }
 
@@ -157,7 +157,7 @@ if [[ $VERSION_ONLY -eq 1 ]]; then
 fi
 if [[ $IN_FILE_ID -eq 0 ]]; then
    echo "No infile" >> $GCCLOG
-   `$GCC $@`
+   $GCC $@
    exit
 fi
 if [[ $PREPROCESS_ONLY -eq 1 ]]; then
@@ -198,7 +198,7 @@ echo "OPTIMIZATION:$OPTIMIZATION" >> $GCCLOG
 if [[ $COMPILE_ONLY -eq 1 ]]; then
    #analyze $OUT_FILE $@
    analyze $OUT_FILE $NARGS
-   `$GCC $@`
+   $GCC $@
 else
    HAS_SOURCE=0
    for FILE in "${IN_FILE[@]}"
@@ -220,7 +220,7 @@ else
    done
    if [[ HAS_SOURCE -eq 0 ]]; then
 	echo "$GCC $@" >>  $GCCLOG
-	`$GCC $@`
+	$GCC $@
    else
 	for FILE in "${O_FILE[@]}"
 	do
@@ -229,6 +229,6 @@ else
 	ARGS=$ARGS" -o "$OUT_FILE
 	#echo "$ARGS"
 	echo "$GCC $ARGS" >>  $GCCLOG
-	`$GCC $ARGS`
+	$GCC $ARGS
    fi
 fi
