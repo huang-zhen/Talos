@@ -10,6 +10,26 @@ Introduction
     collected information in text format, which is described in details in the MANUAL file. Choosing 
     text format makes it easier to process the output of CodeAnalyzer with Python or other programming 
     languages designed for rapid development.
+    
+    CodeAnalyzer is easy to install and use. It includes several helper sscripts such as C/C++ compiler
+    wrappers to faciliate analyzing large projects without the need to modify the configuration of
+    the projects. The TUTORIAL file demonstrates how to build CodeAnalyzer and use it to analyze 
+    the source code of lighttpd, a widely-used HTTP server. 
+    
+    So far CodeAnalyzer has been used to analyze 12 popular open-source applications such as HTTP 
+    servers, FTP server, database server, programmming language interpreter, web browsers, and network 
+    protocol analyzer, with 100,000 lines of source code on average. The following is the list of 
+    the applications that were successfully analyzed by CodeAnalyzer.
+    
+    - HTTP server/proxy: apache httpd, lighttpd, squid 
+    - FTP server: proftpd
+    - Database server/application: postgresql, sqlite
+    - Programming language interpretor: PHP
+    - web browser: firefox
+    - email client: evolution
+    - graphics application: inkscape
+    - messaging application: pidgin
+    - network protocol analyzer: wireshark
 
 Build
 
