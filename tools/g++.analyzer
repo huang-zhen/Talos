@@ -25,13 +25,18 @@ function skipfiles {
 }
 
 function analyze {
-   INS_FILE=$1
+   INS_PATH=$1
+   INS_DIR=${INS_PATH%/*}
+   INS_FILE=${INS_PATH##*/}
    shift
+   if [ "$INS_DIR" == "$INS_FILE" ]; then
+	INS_DIR=.
+   fi
    #CMD="$LLVMGCC -emit-llvm -g $@"
-   CMD="$LLVMGCC -emit-llvm -g $@ -o .$INS_FILE.bc"
+   CMD="$LLVMGCC -emit-llvm -g $@ -o $INS_DIR/.$INS_FILE.bc"
    echo $CMD >>  $GCCLOG
-   #$LLVMGCC -emit-llvm -g $@ -o .$INS_FILE.bc >> $GCCLOG
-   $LLVMGCC -emit-llvm -g $@ -o .$INS_FILE.bc >> $GCCLOG
+   #$LLVMGCC -emit-llvm -g $@ -o $INS_DIR/.$INS_FILE.bc >> $GCCLOG
+   $LLVMGCC -emit-llvm -g $@ -o $INS_DIR/.$INS_FILE.bc >> $GCCLOG
    if [[ $? -eq 0 ]]; then
 	CMD="$OPT -load $ANALYZER -Analyzer -o /dev/null .$INS_FILE.bc"
 	echo $CMD >> $GCCLOG
@@ -56,8 +61,8 @@ LLVMGCC=$GCCDIR/clang++
 GCC=/usr/bin/g++
 OPT=$GCCDIR/opt;
 LLC=llc;
-#ANALYZER="$LLVMDIR/lib/libAnalyzer.so";
-ANALYZER="$LLVMDIR/lib/libAnalyzer.dylib";
+ANALYZER="$LLVMDIR/lib/libAnalyzer.so";
+#ANALYZER="$LLVMDIR/lib/libAnalyzer.dylib";
 #my $argn = @ARGV;
 COMPILE_ONLY=0;
 PREPROCESS_ONLY=0;
