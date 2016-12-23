@@ -25,6 +25,7 @@ function skipfiles {
 }
 
 function analyze {
+   echo "analyze:$@" >> $GCCLOG
    INS_PATH=$1
    INS_DIR=${INS_PATH%/*}
    INS_FILE=${INS_PATH##*/}
@@ -32,25 +33,19 @@ function analyze {
    if [ "$INS_DIR" == "$INS_FILE" ]; then
 	INS_DIR=.
    fi
-   #CMD="$LLVMGCC -emit-llvm -g $@"
    CMD="$LLVMGCC -emit-llvm -g $@ -o $INS_DIR/.$INS_FILE.bc"
    echo $CMD >>  $GCCLOG
-   #$LLVMGCC -emit-llvm -g $@ -o $INS_DIR/.$INS_FILE.bc >> $GCCLOG
-   $LLVMGCC -emit-llvm -g $@ -o $INS_DIR/.$INS_FILE.bc >> $GCCLOG
+   $LLVMGCC -emit-llvm -g "$@" -o $INS_DIR/.$INS_FILE.bc 2>> $GCCLOG
    if [[ $? -eq 0 ]]; then
-	CMD="$OPT -load $ANALYZER -Analyzer -o /dev/null .$INS_FILE.bc"
+	CMD="$OPT -load $ANALYZER -Analyzer -o /dev/null $INS_DIR/.$INS_FILE.bc"
 	echo $CMD >> $GCCLOG
-	$OPT -load $ANALYZER -Analyzer -o /dev/null .$INS_FILE.bc 2>>$OPTLOG
-	if [[ $? -eq 0 ]]; then
-		echo "$GCC $@" >> $GCCLOG
-	else
+	$OPT -load $ANALYZER -Analyzer -o /dev/null $INS_DIR/.$INS_FILE.bc 2>>$OPTLOG
+	if [[ $? -ne 0 ]]; then
 		echo "OPT failed on $INS_FILE" >>  $GCCLOG
 		#cp $INS_FILE $INS_FILE.bc
 	fi
-	$GCC $@ >> $GCCLOG
    else
 	echo "$LLVMGCC failed" >>  $GCCLOG
-	$GCC $@ >> $GCCLOG
    fi 
 }
 
@@ -77,30 +72,29 @@ MF_OUT_IDX=-1;
 IN_FILE_ID=0;
 O_FILE_ID=0;
 INC_IDX=-1;
-ARGS='';
-NARGS='';
+LANG_IDX=-1
+SYS_IDX=-1
 echo "@:$GCC $@" >>  $GCCLOG
 echo "PWD:`pwd`" >>  $GCCLOG
 I=0;
 OPTIMIZATION=0
+# ARGS: arguments without input file, output file and those clang dislikes
+ARGS='';
 for ARG in "$@"
 do
-   #echo $ARG
-   if [[ $ARG = "-O1" ]]; then
-	OPTIMIZATION=1;
-   elif [[ $ARG = "-O2" ]]; then
-	OPTIMIZATION=2;
-   elif [[ $ARG = "-O3" ]]; then
-	OPTIMIZATION=3;
-   elif [[ $ARG = "-fhuge-objects" ]]; then
-	SKIP=1
-   elif [[ $ARG = "-Werror" ]]; then
-	SKIP=1
-   else
-	NARGS=$NARGS" "$ARG
-   fi
+   SKIP=0
    if [[ $ARG =~ ^-.* ]]; then
-	if [[ $ARG = "--version" ]]; then
+   	if [[ $ARG = "-O1" ]]; then
+		OPTIMIZATION=1;
+   	elif [[ $ARG = "-O2" ]]; then
+		OPTIMIZATION=2;
+   	elif [[ $ARG = "-O3" ]]; then
+		OPTIMIZATION=3;
+   	elif [[ $ARG = "-fhuge-objects" ]]; then
+		SKIP=1
+   	elif [[ $ARG = "-Werror" ]]; then
+		SKIP=1
+	elif [[ $ARG = "--version" ]]; then
 		VERSION_ONLY=1;
    	elif [[ $ARG = "-E" ]]; then
 		PREPROCESS_ONLY=1;
@@ -112,6 +106,7 @@ do
 		DEPENDENCY_ONLY=1;
    	elif [[ $ARG = "-c" ]]; then
 		COMPILE_ONLY=1;
+		ARGS=$ARGS" "$ARG
    	elif [[ $ARG = "-o" ]]; then
 		OUT_IDX=$(( $I + 1 ));
 		echo "OUT_IDX:$OUT_IDX" >>  $GCCLOG
@@ -124,6 +119,12 @@ do
 	elif [[ $ARG = "-include" ]]; then
 		INC_IDX=$(( $I + 1));
 		ARGS=$ARGS" "$ARG
+	elif [[ $ARG = "-x" ]]; then
+		LANG_IDX=$(( $I + 1));
+		ARGS=$ARGS" "$ARG
+	elif [[ $ARG = "-isystem" ]]; then
+		SYS_IDX=$(( $I + 1));
+		ARGS=$ARGS" "$ARG
 	else
 		ARGS=$ARGS" "$ARG
    	fi	
@@ -131,7 +132,7 @@ do
 	if [[ $I -eq $OUT_IDX ]]; then
 		OUT_FILE=$ARG;
 	else
-		if [[ $I -ne MT_OUT_IDX && $I -ne MT_OUT_IDX && $I -ne INC_IDX && $I -ne MF_OUT_IDX ]]; then
+		if [[ $I -ne MT_OUT_IDX && $I -ne MT_OUT_IDX && $I -ne INC_IDX && $I -ne MF_OUT_IDX && $I -ne LANG_IDX && $I -ne SYS_IDX ]]; then
 			IN_FILE[$IN_FILE_ID]=$ARG;
 			IN_FILE_ID=$(( $IN_FILE_ID + 1 ))
 		else
@@ -146,45 +147,45 @@ done
 skipdirs $PWD
 if [[ $? -eq 1 ]]; then
    echo "Skipping directory $PWD" >> $GCCLOG
-   $GCC $@
+   $GCC "$@"
    exit
 fi
 skipfiles $IN_FILE
 if [[ $? -eq 1 ]]; then
    echo "Skipping file $IN_FILE" >> $GCCLOG
-   $GCC $@
+   $GCC "$@"
    exit
 fi
 if [[ $VERSION_ONLY -eq 1 ]]; then
    echo "Version only" >> $GCCLOG
-   $GCC $@
+   $GCC "$@"
    exit
 fi
 if [[ $IN_FILE_ID -eq 0 ]]; then
    echo "No infile" >> $GCCLOG
-   $GCC $@
+   $GCC "$@"
    exit
 fi
 if [[ $PREPROCESS_ONLY -eq 1 ]]; then
    echo "Preprocess only" >> $GCCLOG
-   $GCC $@
+   $GCC "$@"
    exit
 fi
 if [[ $GENERATE_ASSEMBLY_ONLY -eq 1 ]]; then
    echo "Generate assembly code only" >> $GCCLOG
-   $GCC $@
+   $GCC "$@"
    exit
 fi
 if [[ $DEPENDENCY_ONLY -eq 1 ]]; then
    echo "DEpendency only" >> $GCCLOG
-   $GCC $@
+   $GCC "$@"
    exit
 fi
 EXT=${IN_FILE##*.}
 echo "EXT:$EXT" >>  $GCCLOG
 if [[ $EXT = 's' ]]; then
    echo "Assembly code" >> $GCCLOG
-   $GCC $@
+   $GCC "$@"
    exit
 fi
 if [[ $OUT_FILE = '' ]]; then
@@ -202,8 +203,8 @@ echo "COMPILE_ONLY:$COMPILE_ONLY" >>  $GCCLOG
 echo "OPTIMIZATION:$OPTIMIZATION" >> $GCCLOG
 if [[ $COMPILE_ONLY -eq 1 ]]; then
    #analyze $OUT_FILE $@
-   analyze $OUT_FILE $NARGS
-   $GCC $@
+   analyze $OUT_FILE $ARGS ${IN_FILE[@]}
+   $GCC "$@"
 else
    HAS_SOURCE=0
    for FILE in "${IN_FILE[@]}"
@@ -223,17 +224,6 @@ else
 		O_FILE_ID=$(( $O_FILE_ID + 1 ))
 	fi
    done
-   if [[ HAS_SOURCE -eq 0 ]]; then
-	echo "$GCC $@" >>  $GCCLOG
-	$GCC $@
-   else
-	for FILE in "${O_FILE[@]}"
-	do
-		ARGS=$ARGS" "$FILE
-	done
-	ARGS=$ARGS" -o "$OUT_FILE
-	#echo "$ARGS"
-	echo "$GCC $ARGS" >>  $GCCLOG
-	$GCC $ARGS
-   fi
+   echo "$GCC $@" >>  $GCCLOG
+   $GCC "$@"
 fi
