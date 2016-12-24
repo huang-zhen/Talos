@@ -1164,8 +1164,10 @@ namespace {
 							DEBUG(errrawout << getLineNumber(i) << " is followed by const return" << '\n');
 							constReturn = succs[0];
 							break;
-						} else
+						} else if (bb != succs[0])
 							bb = succs[0];
+						else
+							break;
 					} else
 						break;
 				}
