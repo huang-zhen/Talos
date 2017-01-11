@@ -11,7 +11,7 @@ Introduction
     text format makes it easier to process the output of CodeAnalyzer with Python or other programming 
     languages designed for rapid development.
     
-    CodeAnalyzer is easy to install and use. It includes several helper sscripts such as C/C++ compiler
+    CodeAnalyzer is easy to install and use. It includes several helper scripts such as C/C++ compiler
     wrappers to faciliate analyzing large projects without the need to modify the configuration of
     the projects. The TUTORIAL file demonstrates how to build CodeAnalyzer and use it to analyze 
     the source code of lighttpd, a widely-used HTTP server. 
