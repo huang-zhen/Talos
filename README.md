@@ -17,7 +17,7 @@ Introduction
     the source code of lighttpd, a widely-used HTTP server. 
     
     So far CodeAnalyzer has been used to analyze 12 popular open-source applications such as HTTP 
-    servers, FTP server, database server, programmming language interpreter, web browsers, and network 
+    servers, FTP server, database server, programming language interpreter, web browsers, and network 
     protocol analyzer, with 100,000 lines of source code on average. The following is the list of 
     the applications that were successfully analyzed by CodeAnalyzer.
     
