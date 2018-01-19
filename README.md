@@ -2,7 +2,8 @@
 
 Introduction
 
-    Talos automatically instruments Security Workaround for Rapid Response (SWRR) into applications to mitigate software vulnerabilities, at the cost of losing functionality related with the vulnerable code. SWRRs prevent the execution of vulnerable code and steer the execution to existing error handling code to avoid obtrusiveness, i.e. losing functionality unrelated to vulnerabilities.
+    Talos automatically instruments Security Workaround for Rapid Response (SWRR) into applications to mitigate 
+software vulnerabilities, at the cost of losing functionality related with the vulnerable code. SWRRs prevent the execution of vulnerable code and steer the execution to existing error handling code to avoid obtrusiveness, i.e. losing functionality unrelated to vulnerabilities.
 
 	SWRRs are oblivious to the nature of vulnerabilities so they can be applied to any vulnerabilities in theory. They are designed to be very simple and easy to be automatically synthesized. As a result, SWRRs can be generated rapidly with minimal information about vulnerabilities.
 
