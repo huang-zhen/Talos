@@ -1,0 +1,192 @@
+#!/bin/bash
+# analyze_app: invoke Talos's frontend to collect information on an application
+std_make() {
+	DIR=$1
+	cd $1
+	if [ $? -ne 0 ]; then
+		echo "ERROR: $DIR doesn't exist!"
+		exit
+	fi
+	make clean
+	if [ $? -eq 0 ]; then
+		rm -f $GCCLOG
+		rm -f $OPTLOG
+		rm -f $ANALYZER_OUTPUT
+		$ANALYZER_GCC
+		export ANALYZER_CFG=$PROJ_DIR/analyzer.cfg
+		make -j8 2>$APP.err
+		if [ $? -ne 0 ]; then
+			echo "ERROR: make failed!"
+		fi
+		oldgcc
+		grep "Analyzed" $OPTLOG|sort|uniq > $LINESFILE
+	else
+		echo "ERROR: make failed!"
+		exit
+	fi
+}
+
+PROJ_DIR=~/Projects/Talos
+$PROJ_DIR/tools/kill_lock
+if [ ! $# == 1 ]; then
+	echo "Usage: analyze_app application"
+	echo "Example: analyze_app firefox"
+	exit
+fi
+APP=$1
+export GCCLOG=$PROJ_DIR/$APP.gcc.log
+export OPTLOG=$PROJ_DIR/$APP.opt.log
+export ANALYZER_OUTPUT=$PROJ_DIR/$APP.out
+export LINESFILE=$PROJ_DIR/$APP.lines
+export ANALYZER_GCC=$PROJ_DIR/tools/analyzergcc
+echo "Removing protection if they exist"
+echo "Start compiling $1@`date`"
+START=`date +%s`
+$PROJ_DIR/tools/enhance_app 0 $APP
+if [ $? -ne 0 ]; then
+	echo "enhance_app 0 $APP failed"
+	exit
+fi
+case "$APP" in
+	"sqlite")
+	std_make ~/code/SQLite-9491ba7d
+	;;
+	"squid")
+	std_make ~/code/squid-2.7.STABLE1
+	;;
+	"apache")
+	std_make ~/code/apache-2.2.19-src
+	;;
+	"apache2.4.7")
+	std_make ~/code/httpd-2.4.7
+	;;
+	"apache2.4.10")
+	std_make ~/code/httpd-2.4.10
+	;;
+	"httpd")
+	std_make $PROJ_DIR/httpd-2.0.42
+	;;
+	"lighttpd")
+	std_make ~/code/lighttpd-1.4.31
+	;;
+	"gedit")
+	std_make ~/code/gedit-3.4.1
+	;;
+	"firefox")
+	cd ~/code/firefox-21.0+build2
+	make -f client.mk clean
+	if [ $? -eq 0 ]; then
+		rm -f $GCCLOG
+		rm -f $OPTLOG
+		rm -f $ANALYZER_OUTPUT
+		$ANALYZER_GCC
+		export ANALYZER_CFG=$PROJ_DIR/analyzer.cfg
+		while true; do
+			./mach build 2>$APP.err
+			if [ $? -ne 0 ]; then
+				echo -n "The compilation seems to be failed. Re-compile? (Y/N)"
+				read YN
+				if [ "$YN" = "n" ]; then
+					break
+				fi
+			else
+				break
+			fi
+		done
+		oldgcc
+		grep "Analyzed" $OPTLOG|sort|uniq > $LINESFILE
+	fi
+	;;
+	"inkscape")
+	std_make ~/code/inkscape-0.48.4
+	;;
+	"evolution")
+	std_make ~/code/evolution-3.2.3
+	;;
+	"squid2.2.5")
+	std_make ~/code/squid-2.2.STABLE5
+	;;
+	"squid2.4.4")
+	std_make ~/code/squid-2.4.STABLE4
+	;;
+	"squid2.5.7")
+	std_make ~/code/squid-2.5.STABLE7
+	;;
+	"squid3.1.6")
+	std_make ~/code/squid-3.1.6
+	;;
+	"squid3.3.5")
+	std_make ~/code/squid-3.3.5
+	;;
+	"postgresql")
+	std_make ~/code/postgresql-8.0.0
+	;;
+	"postgresql8.4.22")
+	#cd ~/code/postgresql-9.0.0
+	#cd ~/code/postgresql-8.1.4
+	std_make ~/code/postgresql-8.4.22
+	;;
+	"php")
+	std_make ~/code/php-5.5.1
+	;;
+	"pidgin")
+	std_make ~/code/pidgin-2.10.1
+	;;
+	"wireshark")
+	std_make ~/code/wireshark-1.10.1
+	;;
+	"proftpd")
+	std_make ~/code/proftpd-1.3.5rc3
+	;;
+	"proftpd1.2.9")
+	std_make ~/code/proftpd-1.2.9
+	;;
+	"proftpd1.3.3")
+	std_make ~/code/proftpd-1.3.3c
+	;;
+	"proftpd1.3.5")
+	std_make ~/code/proftpd-1.3.5
+	;;
+	"modsecurity")
+	std_make ~/code/ModSecurity/apache2
+	;;
+	"autotrace")
+	std_make ~/code/autotrace-0.31.1
+	;;
+	"binutils")
+	std_make ~/code/binutils-2.29
+	;;
+	"binutils2.28")
+	std_make ~/code/binutils-2.28
+	;;
+	"libtiff")
+	std_make ~/code/tiff-4.0.6
+	;;
+	"libtiff3.8")
+	std_make ~/code/tiff-3.8.0
+	;;
+	"zziplib")
+	std_make ~/code/zziplib-0.13.62
+	;;
+	"ytnef")
+	std_make ~/code/ytnef-1.9.2
+	;;
+	*)
+	echo "$1: Invalid applcation name"
+	exit
+	;;
+esac
+echo "End compiling $1@`date`"
+END=`date +%s`
+echo "Start: $START"
+echo "End: $END"
+let DIFF=($END - $START)/60
+let REMAIN=($END - $START)%60
+echo "Total $DIFF minutes $REMAIN seconds"
+echo "Total $DIFF minutes $REMAIN seconds" >> $APP.err
+echo "Checking failure in $GCCLOG"
+grep "OPT failed" $GCCLOG
+if [ $? -eq 0 ]; then
+	echo "Warning: OPT failed for some files"
+fi
+
