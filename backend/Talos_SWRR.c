@@ -27,6 +27,8 @@ void SWRR_loader() {
 	char buf[255];
 
 	SWRR_logfile = getenv("TALOS_SWRRLOG");
+	if (!SWRR_logfile)
+		SWRR_logfile = "/tmp/talos_swrr.log";
 	time_t t;
 	time(&t); 
 	sprintf(buf, "%s Starting...%s", ctime(&t), SWRR_entry);

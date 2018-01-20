@@ -34,6 +34,8 @@ void EXEC_loader() {
 	char buf[255];
 
 	EXEC_logfile = getenv("TALOS_EXECLOG");
+	if (!EXEC_logfile)
+		EXEC_logfile = "/tmp/talos_exec.log";
 	sprintf(buf, "Starting...%s", EXEC_entry);
 	EXEC_log(buf);
 	if (atexit(EXEC_exit) != 0)
