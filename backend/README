@@ -26,3 +26,13 @@ Removing SWRRs
 	The command to remove SWRRs from proftpd is as follows: "talos.py -R proftpd_restore_file -E main_/home/user/code/proftpd-1.3.5rc3/main.c proftpd.out"
 
 	Here we can see that the "-R" option tells Talos to remove SWRRs and it uses the specified removal file, which is generated when Talos runs with the "-S" option. This command will remove all SWRRs from an application. 
+
+
+Activating SWRRs
+
+	Currently SWRRs protect at function levels. There are several reasons for that. One of the main reasons is that the name of a function that is responsible for a vulnerability is often readily available as soon as the vulnerability is discovered. So users can activate the SWRR corresponding to a vulnerable function to mitigate a vulnerability at that point, without any futher information about the vulnerability.
+
+	Each SWRR is activated via an SWRR option, which is implemented as an environment variable. And the name of each SWRR option identifies the name of the function that the option protects. For example, SWRR option "SWRR_pr_help_add_response" corresponds to function pr_help_add_response of proftpd. When Talos instruments an application, it generates a complete list of SWRR options for the application as a reference for users. As in the proftpd example, Talos stores the list of SWRR options in the proftpd.SWRRs file.
+
+	To activate an SWRR, a user simply needs to turn on the corresponding SWRR option by creating the environment variable. For example, a user creates an environment variable called SWRR_pr_help_add_response when starting the proftpd with instrumented SWRRs to activate the SWRR for function pr_help_add_response.
+
