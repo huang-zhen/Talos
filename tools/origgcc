@@ -3,8 +3,8 @@
 # in the ~/tools directory, so that the original C/C++ compilers will be used
 # afterwards.
 #
-rm -f ~/tools/cc
-rm -f ~/tools/gcc
-rm -f ~/tools/g++
-rm -f ~/tools/c++
+rm -f ~/bin/cc
+rm -f ~/bin/gcc
+rm -f ~/bin/g++
+rm -f ~/bin/c++
 

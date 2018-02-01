@@ -50,11 +50,10 @@ function analyze {
 }
 
 # Should verify the following pathnames are appropriate for the environment
-LLVMDIR=$HOME/llvm
-GCCDIR=$LLVMDIR/bin
-LLVMGCC=$GCCDIR/clang
-GCC=/usr/bin/gcc
-OPT=$GCCDIR/opt;
+LLVMDIR=$HOME/code/llvm-3.4.2.src/build/Debug
+LLVMGCC=/usr/local/bin/clang
+GCC=/usr/bin/gcc-4.8
+OPT=/usr/local/bin/opt;
 LLC=llc;
 ANALYZER="$LLVMDIR/lib/libAnalyzer.so";
 #ANALYZER="$LLVMDIR/lib/libAnalyzer.dylib";

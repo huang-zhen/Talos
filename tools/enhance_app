@@ -1,0 +1,149 @@
+#!/bin/bash
+# enhance_app
+function checkSWRR {
+	cd $1
+	if [ $2 -eq 0 ]; then
+		grep --binary-files=without-match -r SWRR * >/dev/null
+		if [ $? -eq 0 ]; then
+			echo "Some files still have SWRR!"
+			exit
+		fi
+	else
+		grep -r SWRR * >/dev/null
+		if [ $? -ne 0 ]; then
+			echo "No files have SWRR!"
+			exit
+		fi
+	fi
+}
+
+if [ ! $# == 2 ]; then
+	echo "Usage: enhance_app flag application"
+	echo "	flag - 1 add SWRR"
+	echo "	flag - 0 remove SWRR/EXEC"
+	echo "	flag - 2 count SWRR"
+	echo "	flag - 3 add EXEC"
+	echo "Example: enhance_app 1 firefox"
+	exit
+fi
+echo "Start enhancing $1@`date`"
+START=`date +%s`
+APP=$2
+ENHANCE=$1
+if [ $ENHANCE -eq 1 ]; then
+	LOGFILE="-S $APP.log"
+	OPTIONFILE="-O $APP.settings"
+elif [ $ENHANCE -eq 2 ]; then
+	LOGFILE="-S $APP.log"
+	OPTIONFILE="-K -O $APP.settings"
+elif [ $ENHANCE -eq 0 ]; then
+	LOGFILE="-R $APP.log"
+	OPTIONFILE="-O $APP.settings"
+elif [ $ENHANCE -eq 3 ]; then
+	LOGFILE="-G $APP.log"
+	OPTIONFILE="-O $APP.settings"
+fi
+export ENHANCER_OUTPUT=$APP.errs$ENHANCE
+PROJ_DIR=~/code/Talos
+TALOS=$PROJ_DIR/talos.py
+case "$APP" in
+	"test_app")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE  $OPTIONFILE -E main_$PROJ_DIR/main.c $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"sqlite")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE  $OPTIONFILE -E main_$HOME/code/SQLite-9491ba7d/src/shell.c $APP.out 2>$ENHANCER_OUTPUT
+	checkSWRR ~/code/SQLite-9491ba7d $ENHANCE
+	;;
+	"squid")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -E main_$HOME/code/squid-2.7.STABLE1/src/main.c $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"proftpd")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -E main_$HOME/code/proftpd-1.3.5rc3/src/main.c $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"proftpd1.3.3")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -E main_$HOME/code/proftpd-1.3.3c/src/main.c $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"proftpd1.3.5")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -E main_$HOME/code/proftpd-1.3.5/src/main.c $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"apache")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -E main_$HOME/code/apache-2.2.19-src/server/main.c $APP.out 2>$ENHANCER_OUTPUT
+	checkSWRR ~/code/apache-2.2.19-src $ENHANCE
+	;;
+	"modsecurity")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -E register_hooks_$HOME/code/ModSecurity/apache2/mod_security2.c $APP.out 2>$ENHANCER_OUTPUT
+	checkSWRR ~/code/ModSecurity/apache2 $ENHANCE
+	;;
+	"apache2.4.7")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -E main_$HOME/code/httpd-2.4.7/server/main.c $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"httpd")
+	;;
+	"lighttpd")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -E main_$HOME/code/lighttpd-1.4.31/src/server.c $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"gedit")
+	;;
+	"firefox")
+	;;
+	"inkscape")
+	;;
+	"evolution")
+	;;
+	"squid2.2.5")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -E main_$HOME/code/squid-2.2.STABLE5/src/main.c $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"squid2.4.4")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -E main_$HOME/code/squid-2.4.STABLE4/src/main.c $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"squid2.5.7")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -E main_$HOME/code/squid-2.5.STABLE7/src/main.c $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"squid3.1.6")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -E main_$HOME/code/squid-3.1.6/src/../src/main.cc $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"squid3.3.5")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -E main_$HOME/code/squid-3.3.5/src/main.cc $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"postgresql")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -L postgresql.options -E main_$HOME/code/postgresql-8.0.0/src/backend/main/main.c $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"postgresql8.1.4")
+	cd $PROJ_DIR
+	time $TALOS $LOGFILE $OPTIONFILE -L postgres.options -E main_$HOME/code/postgresql-8.1.4/src/backend/main/main.c $APP.out 2>$ENHANCER_OUTPUT
+	;;
+	"php")
+	;;
+	"pidgin")
+	;;
+	"wireshark")
+	;;
+	*)
+	echo "$1: Invalid applcation name"
+	exit
+	;;
+esac
+echo "End enhancing $1@`date`"
+END=`date +%s`
+echo "Start: $START"
+echo "End: $END"
+let DIFF=($END - $START)/60
+let REMAIN=($END - $START)%60
+echo "Total $DIFF minutes $REMAIN seconds"
+echo "Total $DIFF minutes $REMAIN seconds" >> $APP.err

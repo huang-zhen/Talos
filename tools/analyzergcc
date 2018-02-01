@@ -6,11 +6,12 @@
 # let CodeAnalyzer analyze the code of the project, just like building the
 # project normally.
 #
-rm -f ~/tools/cc
-rm -f ~/tools/gcc
-rm -f ~/tools/g++
-rm -f ~/tools/c++
-ln -s ~/tools/gcc.analyzer ~/tools/cc
-ln -s ~/tools/gcc.analyzer ~/tools/gcc
-ln -s ~/tools/g++.analyzer ~/tools/g++
-ln -s ~/tools/g++.analyzer ~/tools/c++
+TOOLS_DIR=~/code/Talos/tools
+rm -f ~/bin/cc
+rm -f ~/bin/gcc
+rm -f ~/bin/g++
+rm -f ~/bin/c++
+ln -s $TOOLS_DIR/gcc.analyzer ~/bin/cc
+ln -s $TOOLS_DIR/gcc.analyzer ~/bin/gcc
+ln -s $TOOLS_DIR/g++.analyzer ~/bin/g++
+ln -s $TOOLS_DIR/g++.analyzer ~/bin/c++

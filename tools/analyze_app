@@ -18,7 +18,7 @@ std_make() {
 		if [ $? -ne 0 ]; then
 			echo "ERROR: make failed!"
 		fi
-		oldgcc
+		$ORIG_GCC
 		grep "Analyzed" $OPTLOG|sort|uniq > $LINESFILE
 	else
 		echo "ERROR: make failed!"
@@ -26,7 +26,8 @@ std_make() {
 	fi
 }
 
-PROJ_DIR=~/Projects/Talos
+#PROJ_DIR=~/Projects/Talos
+PROJ_DIR=~/code/Talos
 $PROJ_DIR/tools/kill_lock
 if [ ! $# == 1 ]; then
 	echo "Usage: analyze_app application"
@@ -37,8 +38,9 @@ APP=$1
 export GCCLOG=$PROJ_DIR/$APP.gcc.log
 export OPTLOG=$PROJ_DIR/$APP.opt.log
 export ANALYZER_OUTPUT=$PROJ_DIR/$APP.out
-export LINESFILE=$PROJ_DIR/$APP.lines
-export ANALYZER_GCC=$PROJ_DIR/tools/analyzergcc
+LINESFILE=$PROJ_DIR/$APP.lines
+ANALYZER_GCC=$PROJ_DIR/tools/analyzergcc
+ORIG_GCC=$PROJ_DIR/tools/origgcc
 echo "Removing protection if they exist"
 echo "Start compiling $1@`date`"
 START=`date +%s`
@@ -93,7 +95,7 @@ case "$APP" in
 				break
 			fi
 		done
-		oldgcc
+		$ORIG_GCC
 		grep "Analyzed" $OPTLOG|sort|uniq > $LINESFILE
 	fi
 	;;
