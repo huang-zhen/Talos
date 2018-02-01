@@ -35,13 +35,28 @@
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
-#include "llvm/IR/CFG.h"
-#include "llvm/IR/InstIterator.h"
+// LLVM 3.3
+//#include "llvm/IR/CFG.h"
+// LLVM 3.4.2
+#include "llvm/Analysis/CFG.h"
+// LLVM 3.3
+//#include "llvm/IR/InstIterator.h"
+// LLVM 3.4.2
+#include "llvm/Support/InstIterator.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/IR/CallSite.h"
-#include "llvm/IR/DebugInfo.h"
+// LLVM 3.3
+//#include "llvm/IR/CallSite.h"
+// LLVM 3.4.2
+#include "llvm/Support/CallSite.h"
+// LLVM 3.3
+//#include "llvm/IR/DebugInfo.h"
+// LLVM 3.4.2
+#include "llvm/DebugInfo.h"
 #include "llvm/Analysis/PostDominators.h"
-#include "llvm/IR/Dominators.h"
+// LLVM 3.3
+//#include "llvm/IR/Dominators.h"
+// LLVM 3.4.2
+#include "llvm/Analysis/Dominators.h"
 
 #include "dataflow/cfg.h"
 #include "dataflow/bitvector.h"
@@ -588,7 +603,10 @@ namespace {
 
 	reachDefAnalysis(FunPtr);	// Initialize cfg, df, and use-def
 	postDT = &getAnalysis<PostDominatorTree>(*F);
-	DT = &getAnalysis<DominatorTreeWrapperPass>(*F).getDomTree();
+	// LLVM 3.3
+	//DT = &getAnalysis<DominatorTreeWrapperPass>(*F).getDomTree();
+	// LLVM 3.4.2
+	DT = &getAnalysis<DominatorTree>(*F);
 	checkedCalls.clear();
 	checkedGuardingConditions.clear();
 	findDependency(FunPtr);
@@ -2495,7 +2513,10 @@ namespace {
 	  AU.setPreservesCFG();
 	  //AU.addRequired<LoopInfo>();
 	  AU.addRequired<PostDominatorTree>();
-	  AU.addRequired<DominatorTreeWrapperPass>();
+	  // LLVM 3.3
+	  //AU.addRequired<DominatorTreeWrapperPass>();
+	  // LLVM 3.4.2
+	  AU.addRequired<DominatorTree>();
     }
 
 	void findCalls(Function *F, VarMap& LSV){
