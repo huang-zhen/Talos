@@ -141,7 +141,7 @@ Check the return value of a function call
         	21: if (outfile) {
               	22:	fp = fopen(outfile, "w");
 
-		// The statement at line 21 checks the return value of the call to function update_data against NULL
+		// The statement at line 21 checks the return value of the call to function getenv against NULL
 
 	Output:
 		update_data.bc@/Users/guest/Projects/Talos/tests@update_data.c@21@update_data@21@@getenv@NULL,!=@-2@12
