@@ -393,6 +393,7 @@ namespace {
 	int references;
   };
   struct Analyzer : public ModulePass {
+	std::map<int, std::map<const Instruction*, int> > lineID;
     static char ID; // Pass identification, replacement for typeid
     std::map<GlobalVariable, int> wordcounts; // Constant map for global variables
 
@@ -427,6 +428,29 @@ namespace {
 	std::map<std::string, std::string> prototypes;
 
     Analyzer() : ModulePass(ID), cfg(NULL), df(NULL), fp_count(0) {}
+
+	const std::string getLineID(const std::pair<const Instruction*, int>& ll) {
+		int line = getLineNumber(ll.first);
+		int id;
+		if (lineID.find(line) == lineID.end()) {
+			lineID[line] = std::map<const Instruction*, int>();
+			lineID[line][ll.first] = 0;
+			id = 0;
+		} else {
+			if (lineID[line].find(ll.first) != lineID[line].end())
+				id = lineID[line][ll.first];
+			else {
+				id = lineID[line].size();
+				lineID[line][ll.first] = id;
+			}
+		}
+		std::stringstream ss;
+		ss << line;
+		if (id != 0)
+			ss << '.' << id;
+		ss << ';' << ll.second;
+		return ss.str();
+	}
 
     int loadCfg(Module &M) {
 	//const char *cfgfile = getenv("ANALYZER_CFG");
@@ -1152,12 +1176,12 @@ namespace {
 			std::set<std::pair<const Instruction*, int> > dependentInstrs;
 			if (getDependentInstr(i, dependentInstrs)) {
 				for (std::set<std::pair<const Instruction*, int> >::iterator ii = dependentInstrs.begin(); ii != dependentInstrs.end(); ii++) {
-					int line = getLineNumber(ii->first);
+					const std::string l = getLineID(*ii);
 					if (ii == dependentInstrs.begin())
 					  //dependency << line << '(' << ii->first << ')' << ';' << ii->second;
-					  dependency << line << ';' << ii->second;
+					  dependency << l;
 					else
-					  dependency << ',' << line << ';' << ii->second;
+					  dependency << ',' << l;
 				}
 			} else
 				dependency << 0;
@@ -1512,6 +1536,7 @@ namespace {
 			  DEBUG(errrawout << '\t' << "intersection " << i << ':' << getLineNumber(intersection[i]) << '\n');
 
 			// fix the case when only the then block exists
+			if (intersection.size() > 0) {
 			if (intersection[0] == paths[0][0]) {
 			  paths.erase(paths.begin());
 			  DEBUG(errrawout << '\t' << "Removed branch 0\n");
@@ -1519,6 +1544,7 @@ namespace {
 			  paths.pop_back();
 			  DEBUG(errrawout << '\t' << "Removed branch 1\n");
 		        }
+			}
 		}
 
 		if ((CD == NULL) && (paths.size() > 1)  && (intersection.size() > 0)) {

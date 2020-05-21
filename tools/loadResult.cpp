@@ -34,8 +34,9 @@ bool loadControlDependency(const char *infile, const string& module, const strin
 				func = "main";
 			const string& accessType = tokens[9];
 			const string& callType = tokens[10];
-			//cout << mod << '@' << func << '@' << accessType << '@' << callType << " -- " << module << '@' << function << '@' << '\n';
-			if (mod == module && func == function && accessType == "-2" && callType == "3") {
+			//cout << mod << '@' << func << '@' << accessType << '@' << callType << '\n';
+			//if (mod == module && func == function && accessType == "-2" && callType == "3") {
+			if ((mod == module) && (func == function) && (accessType == "-2") && (callType == "3")) {
 				const string& line = tokens[3];
 				const string& dep = tokens[6];
 				cout << line << "<-" << dep << '\n';
