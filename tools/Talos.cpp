@@ -68,7 +68,7 @@ bool Talos::loadControlDependency(const char* infile, const char* module) {
 			//	func = "main";
 			const string& accessType = tokens[9];
 			const string& callType = tokens[10];
-			if ((mod == module) && (accessType == "-2") && (callType == "3")) {
+			if ((mod == module) && (accessType == "-2") && (callType == "3" || ( callType[0] == '3' && callType[1] == ','))) {
 				const string& line = tokens[3];
 				const string& dep = tokens[6];
 				//cout << line << "<-" << dep << '\n';
