@@ -20,26 +20,26 @@ def usage():
 	sys.exit()
 
 # predicate functions
-def equal(self, lhs, rhs):
+def equal(lhs, rhs):
 	return lhs == rhs
 
-def not_equal(self, lhs, rhs):
+def not_equal(lhs, rhs):
 	return lhs != rhs
 
-def greater_than(self, lhs, rhs):
+def greater_than(lhs, rhs):
 	return lhs > rhs
 
-def greater_or_equal(self, lhs, rhs):
+def greater_or_equal(lhs, rhs):
 	return lhs >= rhs
 
-def less_than(self, lhs, rhs):
+def less_than(lhs, rhs):
 	return lhs < rhs
 
-def less_or_equal(self, lhs, rhs):
+def less_or_equal(lhs, rhs):
 	return lhs <= rhs
 
 # misc functions
-def prt_percentage(self, parms):
+def prt_percentage(parms):
 	numbers = []
 	for (tot, items) in parms:
 		for item in items:
@@ -58,6 +58,10 @@ def prt_percentage(self, parms):
 
 class Talos:	
 	def get_file(self, dir, file):
+		""" return a unique ID corresponds to a file
+		dir: directory name
+		file: source code file name
+		"""
 		if not (dir, file) in self.Files:
 			#print >>sys.stderr, 'Adding file ', dir, file
 			self.Files[(dir, file)] = len(self.Files)
@@ -67,6 +71,11 @@ class Talos:
 		return self.Files[(dir, file)]
 
 	def get_function(self, dir, file, function):
+		""" return a unique ID corresponds to a function
+		dir: directory name
+		file: source code file name
+		function: function name
+		"""
 		if not (dir, file, function) in self.Functions:
 			ID = len(self.Functions)
 			self.Functions[(dir, file, function)] = ID
@@ -81,6 +90,13 @@ class Talos:
 		return ID
 
 	def get_BB(self, fileID, functionID, line, BB, callee=""):
+		""" return a unique ID corresponds to a basic block
+		fileID: ID for the source code file
+		functionID: ID for the function
+		line: line number
+		BB: basic block number or line number
+		callee: used to distinguish different basic blocks exist on one source code line
+		"""
 		if not (fileID, BB, callee) in self.BBs:
 			ID = len(self.BBs)
 			self.BBs[(fileID, BB, callee)] = ID
@@ -154,7 +170,7 @@ class Talos:
 	#	lhs: name of a function
 	def pred_satisfiable(self, lhs, pred, rhs):
 		print >>sys.stderr, 'pred_satisfiable', lhs, pred, rhs
-		return self.PredicateFuncs[pred](self, lhs, rhs)
+		return self.PredicateFuncs[pred](lhs, rhs)
 
 	def is_ret_value_satisfy_pred(self, funcName, pred, rhs):
 		print >>sys.stderr, 'is_ret_value_satisfy_pred', funcName
@@ -379,16 +395,16 @@ class Talos:
 			if APIcall and (not parts[8]):
 				keyarg = int(self.APIs[calleeName][2]) + 11
 				if (keyarg < len(parts)) and parts[keyarg] and (parts[keyarg][0] == '\''):
-					if Debug:
+					if self.Debug:
 						print >> sys.stderr, 'Identified wrapper', functionName, 'in line', lineNo
 					arg = parts[keyarg][1:-1]
 					if not functionName in self.APIs:
-						self.APIs[functionName] = [1, APIs[calleeName][1], arg]
+						self.APIs[functionName] = [1, self.APIs[calleeName][1], arg]
 						countWrappers = countWrappers + 1
 		print >> sys.stderr, 'Identified', countWrappers, 'wrappres'
 		for api in self.APIs:
 			if self.APIs[api][0] <> 0:
-				print >> sys.stderr, '\t', api, APIs[api]
+				print >> sys.stderr, '\t', api, self.APIs[api]
 		end_time = time.time()
 		print >> sys.stderr, "Pass 1 done -", end_time - startTime, "seconds"
 		print "Pass 1 done"
@@ -566,45 +582,45 @@ class Talos:
 			functionName = parts[4]
 			calleeName = parts[7]
 			try:
-				functionID = get_function(parts[1], parts[2], parts[4])
+				functionID = self.get_function(parts[1], parts[2], parts[4])
 			except IndexError:
 				print >> sys.stderr, 'Error in line', lineNo, ',', parts
-			fileID = get_file(parts[1], parts[2])
-			BB = get_BB(fileID, functionID, parts[3], parts[5])
+			fileID = self.get_file(parts[1], parts[2])
+			BB = self.get_BB(fileID, functionID, parts[3], parts[5])
 			#if not functionID in Calls:
 			#	Calls[functionID] = set()
 			#Calls[functionID].add(parts[7])
-			callType = int(parts[10])
+			callType = int(parts[10].split(',')[0])
 			if callType >= 1000:
 				callType -= 1000
-			if callType == 1 and (not parts[4] in APIs):
+			if callType == 1 and (not parts[4] in self.APIs):
 				APIcall = True
 			else:
 				APIcall = False
 			if (parts[6] != '0'):
 				for dpBB in parts[6].split(','):
 					dBB = dpBB.split(';')[0]
-					dominateBB = get_BB(fileID, functionID, 0, dBB)
+					dominateBB = self.get_BB(fileID, functionID, 0, dBB)
 			else:
 				dominateBB = -1
 			if not APIcall:
-				if calleeName in Access:
+				if calleeName in self.Access:
 					countIndirectCalls += 1
-					for keyname in Access[calleeName]:
-						AllKeys[keyname]['Functions'].add(functionID)
-						AllKeys[keyname]['BBs'].add(BB)
+					for keyname in self.Access[calleeName]:
+						self.AllKeys[keyname]['Functions'].add(functionID)
+						self.AllKeys[keyname]['BBs'].add(BB)
 						if dominateBB >= 0:
-							AllKeys[keyname]['dominators'].add(dominateBB)
-							AllKeys[keyname]['dominated BBs'].add(BB)
-						if not functionID in Read:
-							Read[functionID] = {}
-							Read[functionID]['keys'] = set()
-							Read[functionID]['BBs'] = set()
-						Read[functionID]['keys'].add(keyname)
-						Read[functionID]['BBs'].add((keyname, BB))
-						if not BB in BBread:
-							BBread[BB] = set()
-						BBread[BB].add(keyname)
+							self.AllKeys[keyname]['dominators'].add(dominateBB)
+							self.AllKeys[keyname]['dominated BBs'].add(BB)
+						if not functionID in self.Read:
+							self.Read[functionID] = {}
+							self.Read[functionID]['keys'] = set()
+							self.Read[functionID]['BBs'] = set()
+						self.Read[functionID]['keys'].add(keyname)
+						self.Read[functionID]['BBs'].add((keyname, BB))
+						if not BB in self.BBread:
+							self.BBread[BB] = set()
+						self.BBread[BB].add(keyname)
 		input.close()
 		print >> sys.stderr, 'Identified', countIndirectCalls, "indirect Calls."
 		print 'Identified', countIndirectCalls, "indirect Calls."
@@ -626,21 +642,21 @@ class Talos:
 			functionName = parts[4]
 			calleeName = parts[7]
 			try:
-				functionID = get_function(parts[1], parts[2], functionName)
+				functionID = self.get_function(parts[1], parts[2], functionName)
 			except IndexError:
 				print >> sys.stderr, 'Error in line', lineNo, ',', parts
 			#fileID = get_file(parts[1], parts[2])
 			#BB = get_BB(fileID, parts[3], parts[5])
 			#print >> sys.stderr, lineNo, calleeName
-			if calleeName in UI_APIs:
-				arg = int(UI_APIs[calleeName][2])
+			if calleeName in self.UI_APIs:
+				arg = int(self.UI_APIs[calleeName][2])
 				if parts[11 + arg] and parts[11 + arg][0] == '"':
 					countUIKeys = countUIKeys + 1
-					UI_Keys[parts[11 + arg].strip('"')] = [functionID, parts[3]]
+					self.UI_Keys[parts[11 + arg].strip('"')] = [functionID, parts[3]]
 		input.close()
 		print >> sys.stderr, 'Identified', countUIKeys, 'keys used by UI'
 		print 'Identified', countUIKeys, 'keys used by UI'
-		for key in UI_Keys:
+		for key in self.UI_Keys:
 			print '\t', key
 		print "Pass 4 done."
 
@@ -1560,7 +1576,7 @@ class Talos:
 			print func, 'is not analyzed'
 			return
 		if self.FunctionLines[func][5] == None:
-			self.FunctionLines[func][5] = self.is_func_defined_by_macro(FunctionLines[func][3], func, FunctionLines[func][1])
+			self.FunctionLines[func][5] = self.is_func_defined_by_macro(self.FunctionLines[func][3], func, self.FunctionLines[func][1])
 		if self.FunctionLines[func][5]:
 			print >>sys.stderr, func, 'is defined by macros'
 			return
@@ -2052,12 +2068,12 @@ class Talos:
 	def get_label(self, func):
 		return 'label_error_return_for_protection'
 
-	def get_setting_name_ex(protected):
+	def get_setting_name_ex(self, protected):
 		name = "SWRR_" + protected.replace('/', '_').replace('-', '_').replace('.', '_')
 		return name
 
 	def get_setting_name(self, protected):
-		name = get_setting_name_ex(protected)
+		name = self.get_setting_name_ex(protected)
 		if not name in self.ProtectedName:
 			self.ProtectedName[name] = 0
 		else:
@@ -2065,7 +2081,7 @@ class Talos:
 		return name
 
 	def get_setting_number(self, protected, name):
-		SWRR = get_setting_name(protected)
+		SWRR = self.get_setting_name(protected)
 		if not SWRR in self.ProtectedFuncNumber:
 			self.ProtectedFuncNumber[SWRR] = len(self.ProtectedFuncNumber)
 			self.ProtectedFuncRef[self.ProtectedFuncNumber[SWRR]] = name
@@ -2203,12 +2219,12 @@ class Talos:
 			return
 		print >>sys.stderr, '\t', lines[startLine - 1]
 		# only do this if the startLine does not contain the function name
-		if lines[startLine - 1].find(get_orig_func_name(func)) < 0:
+		if lines[startLine - 1].find(self.get_orig_func_name(func)) < 0:
 			# ensure we are at the beginning of a function
 			curLine = startLine
 			while curLine > 0:
 				print >>sys.stderr, 'line- ', curLine, lines[curLine - 1]
-				if is_func_def(curLine, lines):
+				if self.is_func_def(curLine, lines):
 					if lines[curLine - 1].find(self.get_orig_func_name(func)) < 0:
 						print >>sys.stderr, '\tIn wrong location?'
 						print >>sys.stderr, '\t\t', lines[curLine - 1]
@@ -2232,7 +2248,7 @@ class Talos:
 			curLine = startLine
 			while curLine > 0:
 				print >>sys.stderr, 'line- ', curLine, lines[curLine - 1]
-				if is_func_def(curLine, lines):
+				if self.is_func_def(curLine, lines):
 					if lines[curLine - 1].find(self.get_orig_func_name(func)) < 0:
 						print >>sys.stderr, '\tIn wrong location?'
 						print >>sys.stderr, '\t\t', lines[curLine - 1]
@@ -2326,10 +2342,10 @@ class Talos:
 	def add_sec_settings_to_file(self, filename, funcsToDisable, secCP, patchChecks, logfilename):
 		lines = self.get_file_lines(filename)
 		locations = {}
-		if filename != self.FunctionLines[EntryFunc][3]:
+		if filename != self.FunctionLines[self.EntryFunc][3]:
 			locations[1] = 'extern int SWRR_flags[];\nextern void SWRR_log(const char *msg);'
 		for func in funcsToDisable:
-			start_line = self.get_func_start_line(filename, func, FunctionLines[func][1], lines)
+			start_line = self.get_func_start_line(filename, func, self.FunctionLines[func][1], lines)
 			# Something is wrong, can't instrument
 			if start_line == 0:
 				continue
@@ -2398,7 +2414,7 @@ class Talos:
 							print >>sys.stderr, '\t\t', kind, None, ret
 			else:
 				print >>sys.stderr, '\t' + flag, func, 'is protected by caller'
-				ProtectedByCaller.append(get_setting_name_ex(func))
+				self.ProtectedByCaller.append(self.get_setting_name_ex(func))
 			total_protected_lines += self.FunctionLines[func][0]
 		print total_protected_lines, 'lines can be protected.'
 		print len(secCP), 'functions need to be modified.'
@@ -2410,13 +2426,13 @@ class Talos:
 		files = {}
 		print >>sys.stderr, "Identify directly-protectable functions..."
 		#count_disabled_by_callers = self.identify_protectable_funcs(set().union(FunctionLines).intersection(ReachableFuncs), secCP, protFuncs)
-		count_disabled_by_callers = self.identify_protectable_funcs(FunctionLines, secCP, protFuncs)
+		count_disabled_by_callers = self.identify_protectable_funcs(self.FunctionLines, secCP, protFuncs)
 		self.print_protected_funcs('functions can be protected.', protFuncs, secCP, '+')
 
 		secCP2 = {}
 		protFuncs2 = []
 		print >>sys.stderr, "Identify indirectly-protectable functions..."
-		self.identify_protectable_funcs(set().union(FunctionLines).difference(protFuncs), secCP2, protFuncs2)
+		self.identify_protectable_funcs(set().union(self.FunctionLines).difference(protFuncs), secCP2, protFuncs2)
 		self.print_protected_funcs('additional functions can be protected.', protFuncs2, secCP2, '*')
 
 		#print >> sys.stderr, "Protected functions:"
@@ -2456,16 +2472,17 @@ class Talos:
 						files[filename] = []
 						patchChecks[filename] = []
 					patchChecks[filename].append(self.UncheckedCalls[func][caller])
-		print len(files), 'of' , len(allfiles), 'files', '(', len(files) * 100.0 / len(allfiles), '%)', 'need to be modified.'
+		if len(allfiles) != 0:
+			print len(files), 'of' , len(allfiles), 'files', '(', len(files) * 100.0 / len(allfiles), '%)', 'need to be modified.'
 		if checkOnly:
 			return (protFuncs, 0, count_disabled_by_callers)
 		count_lines = 0
 
 		# ensure EntryFile is on the list
-		entryFile = self.FunctionLines[EntryFunc][3]
+		entryFile = self.FunctionLines[self.EntryFunc][3]
 		if not entryFile in files:
 			files[entryFile] = []
-		files[entryFile].append(EntryFunc)
+		files[entryFile].append(self.EntryFunc)
 		if not entryFile in patchChecks:
 			patchChecks[entryFile] = []
 
@@ -2651,7 +2668,7 @@ class Talos:
 		self.ConstReturns = {}
 		self.CondChecks = {}
 		self.PredicateOpps = {'==':'!=', '!=':'==', '> ':'<=', '>=':'< ', '< ':'>=', '<=':'> '}
-		self.PredicateFuncs = {'==':equal, '!=':not_equal, '> ':greater_than, '>=':greater_or_equal, '<':less_than, '<=':less_or_equal}
+		self.PredicateFuncs = {'==':equal, '!=':not_equal, '> ':greater_than, '>=':greater_or_equal, '< ':less_than, '<=':less_or_equal}
 		self.LineOfCall = {}
 		self.RetCheckedFunc = {}
 		self.ErrorReturnPriority = [1, 2, 3, 4, 5, 10, 11, 0]
@@ -2666,7 +2683,7 @@ class Talos:
 			self.SettingsFile = None
 		if args['AddSecuritySetting']:
 			self.AddSecuritySetting = args['AddSecuritySetting'][0]
-			if not SettingsFile:
+			if not self.SettingsFile:
 				print "SettingsFile not set!"
 				sys.exit()
 		else:
@@ -2719,7 +2736,7 @@ class Talos:
 			exit()
 
 		if self.DelSecuritySetting:
-			self.remove_sec_settings_all(DelSecuritySetting)
+			self.remove_sec_settings_all(self.DelSecuritySetting)
 			exit()
 
 		print 'InputFile:', self.InputFile
@@ -2744,8 +2761,8 @@ class Talos:
 		self.pass1(self.InputFile) # identify API wrappers
 		inputlines = None # release memory
 		self.pass2(self.InputFile)
-		#self.pass3(self.InputFile)
-		#self.pass4(self.InputFile)
+		self.pass3(self.InputFile)
+		self.pass4(self.InputFile)
 		self.ReachableFuncs = []
 		self.ReachableCalls = set()
 		print 'build_call_graph...'
@@ -2820,7 +2837,8 @@ class Talos:
 			if not func in self.ErrorReturns:
 				print >>sys.stderr, '\t', func
 				countPointerFuncNoProt += 1
-		print >>sys.stderr, countPointerFuncNoProt * 100.0 / len(TotFuncRetPointer), '% of all pointer-returning functions'
+		if len(TotFuncRetPointer) != 0:
+			print >>sys.stderr, countPointerFuncNoProt * 100.0 / len(TotFuncRetPointer), '% of all pointer-returning functions'
 
 		self.generalize_return_NULL()
 
@@ -2880,7 +2898,7 @@ class Talos:
 			all_prot_funcs = all_prot_funcs.intersection(self.FunctionLines)
 			all_prot_funcs = all_prot_funcs.intersection(self.ReachableFuncs)
 			print 'All protectable funcions:', len(all_prot_funcs), '(', len(all_prot_funcs) * 100.0 / len(TotFuncs), ')'
-			print 'Indirectly protected functions:', self.count_disabled_by_callers, '(', count_disabled_by_callers * 100.0 / len(TotFuncs), ')'
+			print 'Indirectly protected functions:', count_disabled_by_callers, '(', count_disabled_by_callers * 100.0 / len(TotFuncs), ')'
 			#prt_func_list('All protectable funcions:', all_prot_funcs)
 			count_not_protected_funcs = 0
 			print >>sys.stderr, "Functions that can not be protected:"
