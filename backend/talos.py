@@ -823,7 +823,7 @@ class Talos:
 					keys[key].add((dBB, dBB, edge))
 				if dBB in self.References:
 					if verbose:
-						print >>sys.stderr, spc + '-', get_name_for_BB(dBB)
+						print >>sys.stderr, spc + '-', self.get_name_for_BB(dBB)
 					for rBB in self.References[dBB]:
 						for key in self.print_key_read(rBB, config_key, level + 1, verbose):
 							if key not in keys:
@@ -841,24 +841,24 @@ class Talos:
 		return True
 
 	def find_callpath_ex(self, funcName, path, allpaths, verbose, visited, notConnected):
-		if PathCount and (len(allpaths) >= PathCount):
+		if self.PathCount and (len(allpaths) >= self.PathCount):
 			return False
 		if funcName in notConnected:
 			return False
-		if funcName == EntryFunc:
-			return add_callpath(funcName, path, allpaths, verbose, visited, notConnected)
+		if funcName == self.EntryFunc:
+			return self.add_callpath(funcName, path, allpaths, verbose, visited, notConnected)
 		visited.add(funcName)
 		print >>sys.stderr, 'find_callpath_ex +', funcName
-		if (funcName in RCalls):
+		if (funcName in self.RCalls):
 			connected = False
-			for call in RCalls[funcName]:
-				if (not get_name_for_func(BBrefFunc[call]) in visited) and (not call in path):
+			for call in self.RCalls[funcName]:
+				if (not self.get_name_for_func(self.BBrefFunc[call]) in visited) and (not call in path):
 					path.append(call)
-					print >>sys.stderr, 'call +', get_name_for_BB(call)
-					if find_callpath_ex(get_name_for_func(BBrefFunc[call]), path, allpaths, verbose, visited, notConnected):
+					print >>sys.stderr, 'call +', self.get_name_for_BB(call)
+					if self.find_callpath_ex(self.get_name_for_func(self.BBrefFunc[call]), path, allpaths, verbose, visited, notConnected):
 						connected = True
 					path.pop(-1)
-					print >>sys.stderr, 'call -', get_name_for_BB(call)
+					print >>sys.stderr, 'call -', self.get_name_for_BB(call)
 			if not connected:
 				notConnected.add(funcName)
 			if funcName in visited:
@@ -866,13 +866,13 @@ class Talos:
 			print >>sys.stderr, 'find_callpath_ex -', funcName, connected
 			return connected
 		else:
-			if IgnoreEntryFunc:
+			if self.IgnoreEntryFunc:
 				if funcName in visited:
 					visited.remove(funcName)
-				return add_callpath(funcName, path, allpaths, verbose, visited, notConnected)
+				return self.add_callpath(funcName, path, allpaths, verbose, visited, notConnected)
 			else:
 				if verbose:
-					print_path(sys.stderr, '', path, 0)
+					self.print_path(sys.stderr, '', path, 0)
 					print >>sys.stderr, len(path), 'levels'
 				if funcName in visited:
 					visited.remove(funcName)
@@ -886,8 +886,9 @@ class Talos:
 		visited = set()
 		notConnected = set()
 		try:
-			find_callpath_ex(funcName, path, allpaths, verbose, visited, notConnected)
+			self.find_callpath_ex(funcName, path, allpaths, verbose, visited, notConnected)
 		except KeyboardInterrupt:
+			print 'Interrupted by user'
 			pass
 		if verbose:
 			print 'Total', len(allpaths), 'call paths.'
@@ -915,18 +916,18 @@ class Talos:
 		level = 0
 		for call in path:
 			spc = '-' * level
-			callee = get_name_for_func(BBrefFunc[call])
+			callee = self.get_name_for_func(self.BBrefFunc[call])
 			if verbose:
 				if call in intersect:
-					print >>sys.stderr, spc, level, get_name_for_BB(call), callee
+					print >>sys.stderr, spc, level, self.get_name_for_BB(call), callee
 				else:
-					print >>sys.stderr, spc, str(level) + '*', get_name_for_BB(call), callee
-			keys = find_dependent_key(call, True, level, verbose)
+					print >>sys.stderr, spc, str(level) + '*', self.get_name_for_BB(call), callee
+			keys = self.find_dependent_key(call, True, level, verbose)
 			# Call via function pointer is assumed to be controllable
 			if len(keys) == 0:
-				if isFP(callee):
+				if self.isFP(callee):
 					key = callee[1:]
-					if is_config_key(key):
+					if self.is_config_key(key):
 						keys[key] = set()
 						keys[key].add((call, call, 0))
 			# Ignore controls that require setting more than one options
@@ -948,7 +949,7 @@ class Talos:
 		intersect = set.intersection(*sets)
 		idx = 0
 		for path in allpaths:
-			check_callpath(idx, path, dependentpaths, True, intersect)
+			self.check_callpath(idx, path, dependentpaths, True, intersect)
 			idx += 1
 
 	def check_combined_callpath(self, allpaths, dependentpaths, verbose):
@@ -956,7 +957,7 @@ class Talos:
 		for path in allpaths:
 			sets.append(set(path))
 		intersect = set.intersection(*sets)
-		check_callpath(0, intersect, dependentpaths, True)
+		self.check_callpath(0, intersect, dependentpaths, True, intersect)
 
 	def get_leftmost_bracket_pos(self, s):
 		level=0
@@ -1478,6 +1479,7 @@ class Talos:
 			print >>sys.stderr, '\t', func, 'has no error return'
 		return earliestReturn
 
+	'''
 	def find_error_return_for_func_old(self, func):
 		print >> sys.stderr, 'find_error_return_for_func', func
 		earliestReturn = None
@@ -1514,6 +1516,7 @@ class Talos:
 		else:
 			print func, 'has no callees'
 		return earliestReturn
+	'''
 
 	def get_dep_group_for_BB(self, BB):
 		minDepGroup = None
@@ -1607,6 +1610,7 @@ class Talos:
 		else:
 			return True
 
+	'''
 	def get_locations_to_add_sec_setting(self, func):
 		print 'Checking', func
 		BB = self.find_error_return_for_func(func)
@@ -1650,6 +1654,7 @@ class Talos:
 		else:
 			print func, 'has no callers!'
 		return locations
+	'''
 
 	def print_dependency_groups(self, BB):
 		idx = 0
@@ -1836,10 +1841,10 @@ class Talos:
 		exit()
 
 	def find_workaround(self, location, verbose):
-		self.find_workaround_ex(location, verbose, "find_workaround", check_combined_callpath)
+		self.find_workaround_ex(location, verbose, "find_workaround", self.check_combined_callpath)
 
 	def find_constraints(self, location, verbose):
-		self.find_workaround_ex(location, verbose, "find_constraints", check_all_callpath)
+		self.find_workaround_ex(location, verbose, "find_constraints", self.check_all_callpath)
 
 	def find_workaround_ex(self, location, verbose, title, check_func):
 		print >>sys.stderr, 'find_workaround', location
@@ -1852,7 +1857,7 @@ class Talos:
 			try:
 				fileID = self.Files[(os.path.dirname(pathName), os.path.basename(pathName))]
 				BB = self.Lines[(fileID, line)]
-				functionName = self.get_name_for_func(BBrefFunc[BB])
+				functionName = self.get_name_for_func(self.BBrefFunc[BB])
 				print >>sys.stderr, pathName, '=>', fileID, BB
 				print >>sys.stderr, 'Control dependency of', self.get_name_for_BB(BB), functionName
 				paths = []
@@ -1878,7 +1883,7 @@ class Talos:
 			else:
 				print >>sys.stderr, 'Total', len(allpaths), 'paths'
 
-		self.check_func(allpaths, dependentpaths, verbose)
+		check_func(allpaths, dependentpaths, verbose)
 		if verbose:
 			print >>sys.stderr
 		CPs = {}
@@ -2730,14 +2735,14 @@ class Talos:
 
 		if self.InteractiveMode and (self.AddSecuritySetting or self.DelSecuritySetting):
 			print "InteractiveMode, AddSecuritySetting, DelSecuritySetting cannot be used together"
-			exit()
+			return
 		if self.AddSecuritySetting and self.DelSecuritySetting:
 			print "AddSecuritySetting and DelSecuritySetting cannot be used together"
-			exit()
-
+			return
+		
 		if self.DelSecuritySetting:
 			self.remove_sec_settings_all(self.DelSecuritySetting)
-			exit()
+			return
 
 		print 'InputFile:', self.InputFile
 		print 'Location:', self.Location
@@ -2752,7 +2757,7 @@ class Talos:
 		print 'CPFile:', self.CPFile
 
 		# Read API rules from configuration file analyzer.cfg
-		self.load_cfg(os.path.join(os.path.split(sys.argv[0])[0], 'analyzer.cfg'))
+		self.load_cfg(os.path.join(os.environ['TALOS_DIR'], 'analyzer.cfg'))
 
 		#input = open(InputFile, 'r')
 		#inputlines = input.readlines()
@@ -2771,6 +2776,18 @@ class Talos:
 		self.remove_unreachable_calls()
 
 	def main(self):
+		if self.InteractiveMode and (self.AddSecuritySetting or self.DelSecuritySetting):
+			print "InteractiveMode, AddSecuritySetting, DelSecuritySetting cannot be used together"
+			return
+
+		if self.AddSecuritySetting and self.DelSecuritySetting:
+			print "AddSecuritySetting and DelSecuritySetting cannot be used together"
+			return
+
+		if self.DelSecuritySetting:
+			self.remove_sec_settings_all(self.DelSecuritySetting)
+			return
+
 		print 'build_BB_key_dependency...'
 		self.build_BB_key_dependency()
 		file = open(self.InputFile + '.BBKeyDependency', 'w')
@@ -2795,7 +2812,7 @@ class Talos:
 
 		linesFilename = os.path.splitext(os.path.basename(self.InputFile))[0] + '.lines'
 		if os.path.exists(linesFilename):
-			TotLines = self.load_lines_file(linesFilename)
+			TotLines = self.load_lines_file(os.path.join(os.environ['TALOS_DIR'],linesFilename))
 		else:
 			TotLines = 0
 
@@ -2863,7 +2880,7 @@ class Talos:
 
 		if self.IdentifyWorkarounds:
 			print 'identify existing workarounds...'
-			funcsHasWorkaround = self.find_workaround_all(Verbose)
+			funcsHasWorkaround = self.find_workaround_all(self.Verbose)
 			print len(funcsHasWorkaround) * 100.0 / len(TotFuncs), 'precent of functions'
 
 		if self.InteractiveMode:
