@@ -10,8 +10,12 @@ class HotSpot:
 		for name in allArgs:
 			self.args[name] = None
 		os.chdir(os.environ['TALOS_DIR'])
-		self.sensitive_funcs = ['pw_lock', 'pw_open', 'spw_lock', 'spw_open']
+		self.load_sps_funcs()
 		self.load_nsps_funcs()
+
+	def load_sps_funcs(self):
+		# nsp_sp_funcs: sensitive-partition specific functions
+		self.sensitive_funcs = ['pw_lock', 'pw_open', 'spw_lock', 'spw_open', 'pw_update', 'spw_update', 'pw_close', 'spw_close']
 
 	def load_nsps_funcs(self):
 		# nsp_sp_funcs: non-sensitive-partition specific functions
@@ -28,6 +32,8 @@ class HotSpot:
 			if f in self.sensitive_funcs:
 				for BB in talos.RetCheckedFunc[f]:
 					#print '\t', talos.get_name_for_BB(BB)
+					if BB not in talos.ControlBBs:
+						continue
 					for edge in talos.ControlBBs[BB]:
 						for B in talos.ControlBBs[BB][edge]:
 							if B in talos.Callees:
