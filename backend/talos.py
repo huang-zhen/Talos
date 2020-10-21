@@ -348,7 +348,7 @@ class Talos:
 				continue
 			#if calleeName:
 			#	if callType >= 100:
-			#		BBFollowByReturn[BB] = (callType / 1000, (callType % 1000) / 100);
+			#		self.BBFollowByReturn[BB] = (callType / 1000, (callType % 1000) / 100);
 			#		callType %= 100
 			if callType == 6: # reference
 				rBB = parts[9]
@@ -359,7 +359,7 @@ class Talos:
 				if self.Debug:
 					print >> sys.stderr, BB, "refers", referBB
 			if (parts[6] and parts[6] != '0'):
-				#dominateBB = get_BB(fileID, functionID, 0, parts[6])
+				#dominateBB = self.get_BB(fileID, functionID, 0, parts[6])
 				for dpBB in parts[6].split(','):
 					dBB = dpBB.split(';')[0]
 					edge = int(dpBB.split(';')[1])
@@ -372,7 +372,7 @@ class Talos:
 					#else:
 					#	BBDependency[BB].add(dominateBB)
 					self.BBDependency[BB].append((dominateBB, edge))
-					#print >>sys.stderr, "Added dependency", get_name_for_BB(BB), get_name_for_BB(dominateBB)
+					#print >>sys.stderr, lineNo, "Added dependency", self.get_name_for_BB(BB), self.get_name_for_BB(dominateBB)
 					if not dominateBB in self.ControlBBs:
 						self.ControlBBs[dominateBB] = {}
 					if not edge in self.ControlBBs[dominateBB]:
@@ -725,7 +725,9 @@ class Talos:
 		output = output + text
 		print output
 
-	def get_name_for_BB(self, BB):
+	def BB2File(self, BB):
+		""" return a string containing the pathname of the source code file corresponds to a BB
+		"""
 		name = ''
 		first = True
 		#for entry in self.FunctionRef[self.BBref[BB][0]]:
@@ -736,6 +738,18 @@ class Talos:
 					first = False
 				else:
 					name = name + '/' + entry
+		return name
+
+	def BB2Line(self, BB):
+		if BB in self.BBref:
+			return self.BBref[BB][1]
+		else:
+			return 0
+
+	def get_name_for_BB(self, BB):
+		""" return a string containing the pathname of the source code file and the source code line number correspond to a BB
+		"""
+		name = self.BB2File(BB)
 		name = name + ':' + str(self.BBref[BB][1]) + ' ' + str(BB)
 		return name
 
@@ -969,6 +983,12 @@ class Talos:
 				if level == 0:
 					return i
 
+	def get_func_proto_type(self, func):
+		if func in self.FunctionLines:
+			return self.FunctionLines[func][4]
+		else:
+			return ""
+
 	def is_func_return_void(self, protoType):
 		i = get_leftmost_bracket_pos(protoType)
 		if protoType[i - 4 : i] == 'void':
@@ -1151,10 +1171,24 @@ class Talos:
 		return False
 
 	def BB2CallerName(self, BB):
+		""" return the name of the caller function for a call BB
+		"""
 		return self.get_name_for_func(self.BBrefFunc[BB])
 
 	def BB2CalleeName(self, BB):
+		""" return the name of the callee function for a call BB
+		"""
 		return self.Callees[BB]
+
+	def BB2FunctionID(self, BB):
+		""" return the function ID in which BB exists
+		"""
+		return self.BBrefFunc[BB]
+
+	def BB2FileID(self, BB):
+		""" return the file ID in which BB exists
+		"""
+		return self.BBref[BB][0]
 
 	def getCallers(self, func_name):
 		caller_names = set()
@@ -1479,7 +1513,6 @@ class Talos:
 			print >>sys.stderr, '\t', func, 'has no error return'
 		return earliestReturn
 
-	'''
 	def find_error_return_for_func_old(self, func):
 		print >> sys.stderr, 'find_error_return_for_func', func
 		earliestReturn = None
@@ -1516,7 +1549,6 @@ class Talos:
 		else:
 			print func, 'has no callees'
 		return earliestReturn
-	'''
 
 	def get_dep_group_for_BB(self, BB):
 		minDepGroup = None
@@ -1579,21 +1611,17 @@ class Talos:
 			print func, 'is not analyzed'
 			return
 		if self.FunctionLines[func][5] == None:
-			self.FunctionLines[func][5] = self.is_func_defined_by_macro(self.FunctionLines[func][3], func, self.FunctionLines[func][1])
+			self.FunctionLines[func][5] = self.is_func_defined_by_macro(self.FunctionLines[func][3], func)
 		if self.FunctionLines[func][5]:
 			print >>sys.stderr, func, 'is defined by macros'
 			return
 		if not self.get_locations_to_add_sec_setting2(func, funcsToDisable, visited, 0):
 			funcsToDisable.clear()
 
-	def is_func_defined_by_macro(self, path, func, startLine):
+	def is_func_defined_by_macro(self, path, func):
 		# restore original function name for static functions
 		func = self.get_orig_func_name(func)
-		print >>sys.stderr, 'Checking', func, 'at line', startLine, 'in', path
-		inf = open(path, 'r')
-		lines = inf.readlines()
-		inf.close()
-		startLine = self.get_func_decl_line(path, func, startLine, lines)
+		startLine = self.get_func_decl_line(path, func)
 		if startLine:
 			line = lines[startLine - 1]
 			print >>sys.stderr, '----', line
@@ -2061,14 +2089,20 @@ class Talos:
 		print countReverseErrorPropagation, 'functions has been reversely propagated error return'
 		return countReverseErrorPropagation
 
-	def apply_file_change(self, filename, newfilename, logfilename):
-		backupfilename = filename + '.orig'
-		if not os.path.exists(backupfilename):
-			os.rename(filename, backupfilename)
+	def apply_file_change(self, filename, newfilename, logfilename, backup = True):
+		if backup:
+			backupfilename = filename + '.orig'
+			if not os.path.exists(backupfilename):
+				os.rename(filename, backupfilename)
+			else:
+				print "Aborted: File", backupfilename, "already exists!"
+				return -1	
 		os.rename(newfilename, filename)
-		log = open(logfilename, 'a')
-		print >> log, backupfilename, filename
-		log.close()
+		if logfilename:
+			log = open(logfilename, 'a')
+			print >> log, backupfilename, filename
+			log.close()
+		return 0
 
 	def get_label(self, func):
 		return 'label_error_return_for_protection'
@@ -2216,23 +2250,25 @@ class Talos:
 				return False
 		return True
 
-	def get_func_decl_line(self, filename, func, startLine, lines):
-		print >>sys.stderr, 'get_func_decl_line', filename, func, startLine
-		if startLine >= len(lines):
-			print >>sys.stderr, '\tInvalid start_line, file has', len(lines), 'lines'
+	def get_func_decl_line(self, filename, func):
+		if filename not in self.sourceCode:
+			self.sourceCode[filename] = self.get_file_lines(filename)
+		startLine = self.FunctionLines[func][1]
+		if startLine >= len(self.sourceCode[filename]):
+			print >>sys.stderr, '\tInvalid start_line, file has', len(self.sourceCode[filename]), 'lines'
 			#raise IOError
 			return
-		print >>sys.stderr, '\t', lines[startLine - 1]
+		#print >>sys.stderr, '\t', self.sourceCode[filename][startLine - 1]
 		# only do this if the startLine does not contain the function name
-		if lines[startLine - 1].find(self.get_orig_func_name(func)) < 0:
+		if self.sourceCode[filename][startLine - 1].find(self.get_orig_func_name(func)) < 0:
 			# ensure we are at the beginning of a function
 			curLine = startLine
 			while curLine > 0:
-				print >>sys.stderr, 'line- ', curLine, lines[curLine - 1]
-				if self.is_func_def(curLine, lines):
-					if lines[curLine - 1].find(self.get_orig_func_name(func)) < 0:
+				print >>sys.stderr, 'line- ', curLine, self.sourceCode[filename][curLine - 1]
+				if self.is_func_def(curLine, self.sourceCode[filename]):
+					if self.sourceCode[filename][curLine - 1].find(self.get_orig_func_name(func)) < 0:
 						print >>sys.stderr, '\tIn wrong location?'
-						print >>sys.stderr, '\t\t', lines[curLine - 1]
+						print >>sys.stderr, '\t\t', self.sourceCode[filename][curLine - 1]
 						return 0;
 					else:
 						break
@@ -2240,23 +2276,25 @@ class Talos:
 			startLine = curLine
 		return startLine
 
-	def get_func_start_line(self, filename, func, startLine, lines):
-		print >>sys.stderr, 'get_func_start_line', filename, func, startLine
-		if startLine >= len(lines):
-			print >>sys.stderr, '\tInvalid start_line, file has', len(lines), 'lines'
+	def get_func_start_line(self, filename, func):
+		startLine = self.FunctionLines[func][1]
+		if filename not in self.sourceCode:
+			self.sourceCode[filename] = self.get_file_lines(filename)
+		if startLine >= len(self.sourceCode[filename]):
+			print >>sys.stderr, '\tInvalid start_line, file has', len(self.sourceCode[filename]), 'lines'
 			#raise IOError
-			return
-		print >>sys.stderr, '\t', lines[startLine - 1]
+			return -1
+		#print >>sys.stderr, '\t', self.sourceLine[startLine - 1]
 		# only do this if the startLine does not contain the function name
-		if lines[startLine - 1].find(self.get_orig_func_name(func)) < 0:
+		if self.sourceCode[filename][startLine - 1].find(self.get_orig_func_name(func)) < 0:
 			# ensure we are at the beginning of a function
 			curLine = startLine
 			while curLine > 0:
-				print >>sys.stderr, 'line- ', curLine, lines[curLine - 1]
-				if self.is_func_def(curLine, lines):
-					if lines[curLine - 1].find(self.get_orig_func_name(func)) < 0:
+				print >>sys.stderr, 'line- ', curLine, self.sourceCode[filename][curLine - 1]
+				if self.is_func_def(curLine, self.sourceCode[filename]):
+					if self.sourceCode[filename][curLine - 1].find(self.get_orig_func_name(func)) < 0:
 						print >>sys.stderr, '\tIn wrong location?'
-						print >>sys.stderr, '\t\t', lines[curLine - 1]
+						print >>sys.stderr, '\t\t', self.sourceCode[filename][curLine - 1]
 						return 0;
 					else:
 						break
@@ -2264,8 +2302,8 @@ class Talos:
 			startLine = curLine
 
 		origStartLine = startLine
-		while startLine < len(lines):
-			line = lines[startLine - 1].strip()
+		while startLine < len(self.sourceCode[filename]):
+			line = self.sourceCode[filename][startLine - 1].strip()
 			print >>sys.stderr, 'line+ ', startLine, line
 			if line and line[-1] == '{':
 				print >>sys.stderr, func, startLine
@@ -2301,13 +2339,9 @@ class Talos:
 		stmt = 'EXEC_log("' + func + '");'
 		return stmt;
 
-	def insert_code(self, filename, locations, logfilename):
+	def change_code(self, filename, locations, logfilename, backup = True):
 		backupfilename = filename + '.orig'
 		outfilename = filename + '.protected'
-
-		if os.path.exists(backupfilename):
-			print "File", backupfilename, "already exists!"
-			return -1
 
 		input = open(filename, 'r')
 		output = open(outfilename, 'w')
@@ -2316,23 +2350,31 @@ class Talos:
 			line = line.strip('\n')
 			line_no += 1
 			if line_no in locations:
-				print >> output, locations[line_no]
-			print >> output, line
+				print >> output, locations[line_no][1]
+				if locations[line_no][0] != 'c':
+					print >> output, line
+			else:
+				print >> output, line
 		output.close()
 		input.close()
 		old_lines = sum(1 for line in open(filename))
 		new_lines = sum(1 for line in open(outfilename))
-		self.apply_file_change(filename, outfilename, logfilename)
+		self.apply_file_change(filename, outfilename, logfilename, backup)
 		print >>sys.stderr, 'Added', new_lines - old_lines, 'lines to', filename
 		return new_lines - old_lines
 
+	def insert_code(self, filename, locations, logfilename):
+		changeLocations = {}
+		for l in locations:
+			changeLocations[l] = ('a', locations[l])
+		self.change_code(filename, changeLocations, logfilename)
+
 	def add_exec_log_code_to_file(self, filename, funcs, logfilename):
-		lines = self.get_file_lines(filename)
 		locations = {}
 		if filename != self.FunctionLines[EntryFunc][3]:
 			locations[1] = 'extern int EXEC_flags[];' + '\nextern void EXEC_log(const char *msg);'
 		for func in funcs:
-			start_line = self.get_func_start_line(filename, func, self.FunctionLines[func][1], lines)
+			start_line = self.get_func_start_line(filename, func)
 			# Something is wrong, can't instrument
 			if start_line == 0:
 				continue
@@ -2345,12 +2387,11 @@ class Talos:
 		return self.insert_code(filename, locations, logfilename)
 
 	def add_sec_settings_to_file(self, filename, funcsToDisable, secCP, patchChecks, logfilename):
-		lines = self.get_file_lines(filename)
 		locations = {}
 		if filename != self.FunctionLines[self.EntryFunc][3]:
 			locations[1] = 'extern int SWRR_flags[];\nextern void SWRR_log(const char *msg);'
 		for func in funcsToDisable:
-			start_line = self.get_func_start_line(filename, func, self.FunctionLines[func][1], lines)
+			start_line = self.get_func_start_line(filename, func)
 			# Something is wrong, can't instrument
 			if start_line == 0:
 				continue
@@ -2681,6 +2722,7 @@ class Talos:
 		self.ProtectedFuncRef = {}
 		self.ProtectedByCaller = []
 		self.ExecFuncNumber = {}
+		self.sourceCode = {}
 
 		if args['SettingsFile']:
 			self.SettingsFile = args['SettingsFile'][0]
@@ -2763,6 +2805,10 @@ class Talos:
 		#inputlines = input.readlines()
 		#input.close()
 
+		if not os.path.exists(self.InputFile):
+			print 'Error:', self.InputFile, 'does not exist!'
+			return
+
 		self.pass1(self.InputFile) # identify API wrappers
 		inputlines = None # release memory
 		self.pass2(self.InputFile)
@@ -2774,6 +2820,11 @@ class Talos:
 		self.build_call_graph(self.EntryFunc)
 		print 'remove_unreachable_calls...'
 		self.remove_unreachable_calls()
+		linesFilename = os.path.splitext(os.path.basename(self.InputFile))[0] + '.lines'
+		if os.path.exists(linesFilename):
+			self.load_lines_file(os.path.join(os.environ['TALOS_DIR'],linesFilename))
+		else:
+			print >> sys.stderr, "Warning: Lines file " + linesFilename + " does not exist!"
 
 	def main(self):
 		if self.InteractiveMode and (self.AddSecuritySetting or self.DelSecuritySetting):
@@ -2814,6 +2865,7 @@ class Talos:
 		if os.path.exists(linesFilename):
 			TotLines = self.load_lines_file(os.path.join(os.environ['TALOS_DIR'],linesFilename))
 		else:
+			print >> sys.stderr, "Lines file " + linesFilename + " does not exist."
 			TotLines = 0
 
 		print 'identify error returns...'
