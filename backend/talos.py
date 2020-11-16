@@ -2250,6 +2250,23 @@ class Talos:
 				return False
 		return True
 
+	def get_first_func_line(self, filename):
+		if filename not in self.sourceCode:
+			self.sourceCode[filename] = self.get_file_lines(filename)
+		first_line = len(self.sourceCode[filename])
+		first_func = None
+		for func in self.FunctionLines:
+			if self.FunctionLines[func][3] != filename:
+				continue
+			start_line = self.FunctionLines[func][1]
+			if start_line < first_line:
+				first_line = start_line
+				first_func = func
+		if first_func:
+			return (first_line, first_func)
+		else:
+			return (0, None)
+
 	def get_func_decl_line(self, filename, func):
 		if filename not in self.sourceCode:
 			self.sourceCode[filename] = self.get_file_lines(filename)
