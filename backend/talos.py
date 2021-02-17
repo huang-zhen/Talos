@@ -2331,6 +2331,9 @@ class Talos:
 		print >>sys.stderr, 'Unable to find start line for', func, '@', origStartLine
 		return origStartLine
 
+	def get_func_size(self, func):
+		return self.FunctionLines[func][0]
+
 	def get_call_checks(self, lines, line1, line2):
 		check = "// SWRR: patched call checks\n"
 		for line in range(line1, line2 + 1):
@@ -2686,6 +2689,22 @@ class Talos:
 	def list_cond_exec_funcs(self, funcList):
 		pass
 
+	def load_API_errors(APIErrorSpec):
+		inp = open(APIErrorSpec, 'r')
+		while True:
+			line = inp.readline()
+			if not line:
+				break
+			if line[0] == '#':
+				continue
+			line = line.strip()
+			parts = line.split()
+			if parts[1] == 'NULL':
+				add_error_return(3, parts[0], None, parts[1])
+			else:
+				add_error_return(0, parts[0], None, int(parts[1], 0))
+		inp.close()
+
 	def __init__(self, args):
 		self.Functions = {}
 		self.BBs = {}
@@ -2741,6 +2760,18 @@ class Talos:
 		self.ExecFuncNumber = {}
 		self.sourceCode = {}
 
+		if args['APIErrorSpec']:
+		    self.APIErrorSpec = args['APIErrorSpec'][0]
+		else:
+		    self.APIErrorSpec = None
+		if args['PatchFunc']:
+		    self.PatchFunc = args['PatchFunc'][0]
+		else:
+		    self.PatchFunc = None
+		if args['ConfigFile']:
+		    self.CfgFile = args['ConfigFile'][0]
+		else:
+		    self.CfgFile = os.path.join(os.environ['TALOS_DIR'], 'analyzer.cfg')
 		if args['SettingsFile']:
 			self.SettingsFile = args['SettingsFile'][0]
 		else:
@@ -2816,7 +2847,10 @@ class Talos:
 		print 'CPFile:', self.CPFile
 
 		# Read API rules from configuration file analyzer.cfg
-		self.load_cfg(os.path.join(os.environ['TALOS_DIR'], 'analyzer.cfg'))
+		self.load_cfg(self.CfgFile)
+
+		if self.APIErrorSpec:
+			self.load_API_errors(self.APIErrorSpec)
 
 		#input = open(InputFile, 'r')
 		#inputlines = input.readlines()
@@ -3044,7 +3078,11 @@ if __name__ == "__main__":
 	parser.add_argument('-O', dest='SettingsFile', help='Filename of security settings', nargs=1)
 	parser.add_argument('-K', dest='CheckOnly', help='Do not apply security settings', action='store_true')
 	parser.add_argument('-G', dest='AddExecLog', help='Add execution logging', nargs=1)
+	parser.add_argument('-F', dest='ConfigFile', help='Filename of configuration file', nargs=1, required=True)
+	parser.add_argument('-a', dest='APIErrorSpec', help='Filename of API error specification', nargs=1)
 	parser.add_argument('-D', dest='CondExecFuncs', help='Identify functions taht are executed conditionaly', action='store_true')
+	parser.add_argument('-B', dest='PatchFunc', help='Patch a specified function', nargs=1)
+
 
 	args = vars(parser.parse_args(sys.argv[1:]))
 
