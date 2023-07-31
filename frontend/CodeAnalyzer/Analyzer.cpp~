@@ -15,6 +15,9 @@
 #include <utility>
 #include <algorithm>
 
+#define LLVM_VERSION(major, minor) (((major) << 8) | (minor))
+#define LLVM_VERSION_CODE LLVM_VERSION(LLVM_VERSION_MAJOR, LLVM_VERSION_MINOR)
+
 #include "llvm/Pass.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Module.h"
@@ -35,6 +38,11 @@
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 8)
+#include "llvm/IR/InstIterator.h"
+#else
+#include "llvm/Support/InstIterator.h"
+#endif
 // LLVM 3.3
 //#include "llvm/IR/CFG.h"
 // LLVM 3.4.2
@@ -42,21 +50,31 @@
 // LLVM 3.3
 //#include "llvm/IR/InstIterator.h"
 // LLVM 3.4.2
-#include "llvm/Support/InstIterator.h"
 #include "llvm/Support/Debug.h"
 // LLVM 3.3
 //#include "llvm/IR/CallSite.h"
-// LLVM 3.4.2
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 8)
+#include "llvm/IR/CallSite.h"
+#else
 #include "llvm/Support/CallSite.h"
+#endif
 // LLVM 3.3
 //#include "llvm/IR/DebugInfo.h"
 // LLVM 3.4.2
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 8)
+#include "llvm/IR/DebugInfo.h"
+#else
 #include "llvm/DebugInfo.h"
+#endif
 #include "llvm/Analysis/PostDominators.h"
 // LLVM 3.3
 //#include "llvm/IR/Dominators.h"
 // LLVM 3.4.2
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 8)
+#include "llvm/IR/Dominators.h"
+#else
 #include "llvm/Analysis/Dominators.h"
+#endif
 #include "llvm/Support/CommandLine.h"
 
 #include "dataflow/cfg.h"
@@ -204,7 +222,7 @@ namespace {
 		     	int nBB = 0;
 
 			for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
-				BasicBlock *pBB = BB;
+				BasicBlock *pBB = &(*BB);
 				m_blocknums[pBB] = nBB++;
 			}
 			m_basicblockcount = nBB;
@@ -216,14 +234,14 @@ namespace {
 
 			for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
 				std::vector<int> predecessors;
-				for (pred_iterator PI = pred_begin(BB), E = pred_end(BB); PI != E; ++PI) {
+				for (pred_iterator PI = pred_begin(&(*BB)), E = pred_end(&(*BB)); PI != E; ++PI) {
 					BasicBlock *pred = *PI;
 					predecessors.push_back(m_blocknums[pred]);
 				}
 				m_predecessors.push_back(predecessors);
 
 				std::vector<int> successors;
-				for (succ_iterator PI = succ_begin(BB), E = succ_end(BB); PI != E; ++PI) {
+				for (succ_iterator PI = succ_begin(&(*BB)), E = succ_end(&(*BB)); PI != E; ++PI) {
 					BasicBlock *succ = *PI;
 					successors.push_back(m_blocknums[succ]);
 				}
@@ -268,7 +286,7 @@ namespace {
 		void gen_use_def(Function *F, Dataflow *df) {
 			std::vector<Bitvector> in_sets = df->get_in_sets();
 			for (Function::iterator bb=F->begin(), bbEnd=F->end(); bb != bbEnd; ++bb){
-				BasicBlock* pBB = bb;
+				BasicBlock* pBB = &*bb;
 				Bitvector bv = in_sets[m_blocknums[pBB]];
 				for (BasicBlock::iterator i=bb->begin(), iend=bb->end(); i != iend; ++i){
 					if (StoreInst *pStore = dyn_cast<StoreInst>(i)) {
@@ -343,10 +361,16 @@ namespace {
 		int getLineNumber(Instruction *i) {
 			int line = 0;
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 8)
+			auto& Loc = i->getDebugLoc();
+			if (Loc) 
+				line = Loc.getLine();
+#else
 			if (MDNode *N = i->getMetadata("dbg")) {
 			   DILocation Loc(N);
 			   line = Loc.getLineNumber();
 			}
+#endif
 			return line;
 		}
 
@@ -393,6 +417,7 @@ namespace {
 	int references;
   };
   struct Analyzer : public ModulePass {
+	std::map<int, std::map<const Instruction*, int> > lineID;
     static char ID; // Pass identification, replacement for typeid
     std::map<GlobalVariable, int> wordcounts; // Constant map for global variables
 
@@ -427,6 +452,44 @@ namespace {
 	std::map<std::string, std::string> prototypes;
 
     Analyzer() : ModulePass(ID), cfg(NULL), df(NULL), fp_count(0) {}
+
+	const std::string getLineID(const std::pair<const Instruction*, int>& ll) {
+		// include callee name in BBDependency
+		std::string callee_name;
+		const BasicBlock *bb = ll.first->getParent();
+		for (BasicBlock::const_reverse_iterator it = bb->rbegin(); it != bb->rend(); it++) {
+			const Instruction *ci = &*it;
+			if (const CallInst *pCall = dyn_cast<CallInst>(ci)) {
+				Function *callee = pCall->getCalledFunction();
+				if (callee) {
+					callee_name = decorateInternalName(callee);
+				}
+				break;
+			}
+		}
+		int line = getLineNumber(ll.first);
+		int id;
+		if (lineID.find(line) == lineID.end()) {
+			lineID[line] = std::map<const Instruction*, int>();
+			lineID[line][ll.first] = 0;
+			id = 0;
+		} else {
+			if (lineID[line].find(ll.first) != lineID[line].end())
+				id = lineID[line][ll.first];
+			else {
+				id = lineID[line].size();
+				lineID[line][ll.first] = id;
+			}
+		}
+		std::stringstream ss;
+		ss << line;
+		if (callee_name != "")
+			ss << '.' << callee_name; 
+		//if (id != 0)
+		//	ss << '.' << id;
+		ss << ';' << ll.second;
+		return ss.str();
+	}
 
     int loadCfg(Module &M) {
 	//const char *cfgfile = getenv("ANALYZER_CFG");
@@ -561,9 +624,20 @@ namespace {
 				Dir.erase(Dir.size() - 1);
 	}
 
-    virtual bool runOnModule(Module &M) {
-	  ModuleName = M.getModuleIdentifier();
-      DEBUG(errrawout << "\nModule: " << ModuleName << '\n');
+	void getFilePath(Module &M, Function *F) {
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 8)
+		SmallVector<std::pair<unsigned, MDNode *>, 4> MDs;
+		F->getAllMetadata(MDs);
+		for (auto &MD : MDs) {
+		  if (MDNode *N = MD.second) {
+			 if (auto *subProgram = dyn_cast<DISubprogram>(N)) {
+				//errs() << subProgram->getLine() << '\n';
+				Dir = subProgram->getDirectory();
+				File = subProgram->getFilename();
+			 }
+		  }
+		}
+#else
 	  NamedMDNode *nmd = M.getNamedMetadata("llvm.dbg.cu");
 	  if (nmd) {
 		if (nmd->getNumOperands() > 0) {
@@ -574,6 +648,13 @@ namespace {
 			DEBUG(errrawout << "Directory: " << Dir << '\n');
 		}
 	  }
+#endif
+	}
+
+    virtual bool runOnModule(Module &M) {
+	  ModuleName = M.getModuleIdentifier();
+      DEBUG(errrawout << "\nModule: " << ModuleName << '\n');
+
       LLVMContext &Context = M.getContext();
       UIntPtr = Type::getInt32PtrTy(Context);
       Int32 = Type::getInt32Ty(Context);
@@ -608,16 +689,20 @@ namespace {
  	includeGlobalVar = AnalyzerUseGV; 
 #endif
       for (Module::iterator F = M.begin(), E = M.end(); F != E; ++F) {
-	Function *FunPtr = F;
+	Function *FunPtr = &*F;
 	if (F->empty())
 		continue;
 
+	getFilePath(M, &*F);
 	reachDefAnalysis(FunPtr);	// Initialize cfg, df, and use-def
 	postDT = &getAnalysis<PostDominatorTree>(*F);
-	// LLVM 3.3
-	//DT = &getAnalysis<DominatorTreeWrapperPass>(*F).getDomTree();
+	// LLVM 3.3, 3.8
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 8)
+	DT = &getAnalysis<DominatorTreeWrapperPass>(*F).getDomTree();
 	// LLVM 3.4.2
+#else
 	DT = &getAnalysis<DominatorTree>(*F);
+#endif
 	checkedCalls.clear();
 	checkedGuardingConditions.clear();
 	findDependency(FunPtr);
@@ -640,11 +725,14 @@ namespace {
 		if (first_lines.find(it->first) != first_lines.end())
 			first_line = first_lines[it->first];
 		DEBUG(errrawout << "\t*Analyzed " << it->second.size() << "@" << first_line << " lines for " << it->first << ' ' << Dir << '/' << File << ' ' << prototypes[it->first] << '\n');
+		std::stringstream ss;
+		ss << it->second.size() << ';' << Dir << '/' << File << ';' << prototypes[it->first];
+		dumpCallEx(first_line, it->first, "", ss.str(), -2, 14, NULL, NULL);
 	}
 	DEBUG(errrawout << "Analyzed " << tot_analyzed_lines << " lines for " << Dir << '/' << File << '\n');
 	//for (std::set<int>::iterator i = analyzed_lines.begin(); i != analyzed_lines.end(); i++)
 	//		DEBUG(errrawout << "\tLine " << *i << '\n');
-	IPC_Lock lock("shared_lock");
+	IPC_Lock lock(outputfile);
 	lock.lock(ModuleName.c_str());
 	std::ofstream outfile;
 	outfile.open(outputfile, std::fstream::out | std::fstream::app);
@@ -679,8 +767,12 @@ namespace {
 							if (GetElementPtrInst *pGEP = dyn_cast<GetElementPtrInst>(arg))
 								arg = pGEP->getPointerOperand();
 							else if (ConstantExpr* pExp = dyn_cast<ConstantExpr>(arg)) {
-								pGEP = dyn_cast<GetElementPtrInst>(pExp->getAsInstruction());
+								Instruction *inst = pExp->getAsInstruction();
+								pGEP = dyn_cast<GetElementPtrInst>(inst);
 								arg = pGEP->getPointerOperand();
+								inst->dropAllReferences();
+								if (inst->getParent())
+									inst->eraseFromParent();
 							}
 							std::string pred, val;
 							getConstValue(cmp->getOperand(valIdx), val);
@@ -711,22 +803,36 @@ namespace {
 			val = pLoad->getPointerOperand();
 			//DEBUG(errrawout << "\tLoad " << val << '\n');
 		}
-		if (dyn_cast<GlobalVariable>(val))
+		if (dyn_cast<GlobalVariable>(val)) {
+			DEBUG(errrawout << "\tAccessing global " << val->getName() << '\n');
 			return true;
-		else if (arguments.find(val) != arguments.end())
+		} else if (arguments.find(val) == arguments.end()) {
+			DEBUG(errrawout << "\tAccessing non-argument " << val->getName() << '\n');
 			return true;
-		else
+		} else
 			return false;
 	}
 
 	bool BBModifyLocalOnly(BasicBlock *bb, std::set<Value *>& arguments) {
 		for (BasicBlock::iterator i=bb->begin(), iend=bb->end(); i != iend; ++i){
-			if (StoreInst *pStore = dyn_cast<StoreInst>(i)) {
+			if (AllocaInst *pAlloc = dyn_cast<AllocaInst>(i)) {
+				arguments.insert(pAlloc);
+			} else if (StoreInst *pStore = dyn_cast<StoreInst>(i)) {
 				//DEBUG(errrawout << "\tChecking store at line " << getLineNumber(pStore) << '\n');
 				Value *arg = pStore->getPointerOperand();
-				if (isNonLocalVar(arg, arguments))
+				if (AllocaInst *pAlloc = dyn_cast<AllocaInst>(arg)) {
+					if (arguments.find(pStore->getValueOperand()) != arguments.end()) {
+						arguments.insert(pAlloc);
+						//DEBUG(errrawout << "\tAdding alloc " << pAlloc << '\n');
+
+					}
+				} else {
+				Value *val = pStore->getValueOperand();
+				if (!dyn_cast<Constant>(val) && (arguments.find(val) == arguments.end()))
 					return false;
-				else if (LoadInst *pLoad = dyn_cast<LoadInst>(arg)) {
+				//if (isNonLocalVar(arg, arguments))
+				//	return false;
+				if (LoadInst *pLoad = dyn_cast<LoadInst>(arg)) {
 					std::list<Instruction *> lu = cfg->get_use_def(pLoad);
 					for (std::list<Instruction *>::iterator it = lu.begin(); it != lu.end(); it++) {
 						if (StoreInst *pStore = dyn_cast<StoreInst>(*it)) {
@@ -738,15 +844,20 @@ namespace {
 					if (isNonLocalVar(pGEP->getPointerOperand(), arguments))
 						return false;
 				} else if (ConstantExpr* pExp = dyn_cast<ConstantExpr>(arg)) {
-					pGEP = dyn_cast<GetElementPtrInst>(pExp->getAsInstruction());
-					if (isNonLocalVar(pGEP->getPointerOperand(), arguments))
-						return false;
-				} else if (AllocaInst *pAlloc = dyn_cast<AllocaInst>(arg)) {
-					if (arguments.find(pStore->getValueOperand()) != arguments.end()) {
-						arguments.insert(pAlloc);
-						DEBUG(errrawout << "\tAdding alloc " << pAlloc << '\n');
+					Instruction *inst = pExp->getAsInstruction();
+					pGEP = dyn_cast<GetElementPtrInst>(inst);
+					bool ret;
+					if (pGEP) {
+						ret = isNonLocalVar(pGEP->getPointerOperand(), arguments);
 					}
+					inst->dropAllReferences();
+					if (inst->getParent())
+						inst->eraseFromParent();
+					if (pGEP)
+						return !ret;
 				}
+				}
+#if 0
 			} else if (CallInst *call = dyn_cast<CallInst>(i)) {
 				Function* callee = call->getCalledFunction();
 				if (callee) {
@@ -761,6 +872,7 @@ namespace {
 				return false;
 			} else if (dyn_cast<InvokeInst>(i)) {
 				return false;
+#endif
 			} else if (LoadInst *pLoad = dyn_cast<LoadInst>(i)) {
 				if (arguments.find(pLoad->getPointerOperand()) != arguments.end()) {
 					arguments.insert(pLoad);
@@ -788,7 +900,7 @@ namespace {
 	bool BBDependentOnNULLCheck(std::set<Value *>& arguments, BasicBlock *bb) {
 		if (bb->empty())
 			return false;
-		std::list<std::pair<Value*, std::string> > vars = getDependentVars(bb->begin());
+		std::list<std::pair<Value*, std::string> > vars = getDependentVars(&*(bb->begin()));
 		DEBUG(errrawout << "\tchecking if line " << getLineNumber(bb) << " is dependent on null check\n");
 		for (std::list<std::pair<Value*, std::string> >::iterator ii = vars.begin(); ii != vars.end(); ii++) {
 			DEBUG(errrawout << '\t' << ii->first->getName() << ii->second << '\n');
@@ -821,6 +933,7 @@ namespace {
 			path.pop_back();
 			return "";
 		}
+#if 0 // does not concern constant return 
 		if (const_returns.find(bb) != const_returns.end()) {
 #if 0
 			std::vector<int> lines;
@@ -836,6 +949,7 @@ namespace {
 			return const_returns[bb].second;
 #endif
 		}
+#endif
 		visited.insert(bb);
 		for (succ_iterator I = succ_begin(bb), E = succ_end(bb); I != E; ++I) {
 			std::string res = pathModifyLocalOnly(*I, visited, arguments, path);
@@ -855,30 +969,36 @@ namespace {
 		std::list<BasicBlock *> path;
 		for (Function::arg_iterator I = F->arg_begin(), E = F->arg_end(); I != E; ++I) {
 			Argument* arg = &*I;
-#if 1
+			DEBUG(errrawout << "\tArg: " << arg->getName() << '\n');
 			// Check whether it's passed by reference
+#if 1
 			const Type* T = arg->getType();
-			if (T->isPointerTy() || T->isArrayTy()) {
+			if (!T->isPointerTy()) {
+				DEBUG(errrawout << "\tAdding argument " << arg->getName() << '\n');
 				arguments.insert(arg);
-				DEBUG(errrawout << "\targ:" << arg->getName() << '\n');
 			}
 #else
 			arguments.insert(arg);
-			DEBUG(errrawout << "\targ:" << arg->getName() << '\n');
 #endif
 		}
-		return pathModifyLocalOnly(F->begin(), visited, arguments, path);
+		//return pathModifyLocalOnly(F->begin(), visited, arguments, path);
+		for (Function::iterator i = F->begin(), e = F->end(); i != e; ++i) {
+			if (!BBModifyLocalOnly(&(*i), arguments))
+				return "";
+		}
+		return "0";
 	}
 
 	// get the next line number of an instruction within a BB
 	static int getNextLineNumber(BasicBlock *b, BasicBlock::iterator i) {
-		int line = getLineNumber(i);
+		Instruction *ii = &(*i);
+		int line = getLineNumber(ii);
 		while (i != b->end()) {
 			i++;
 			if (i == b->end())
 				break;
-			if (getLineNumber(i) > line) {
-				line = getLineNumber(i);
+			if (getLineNumber(ii) > line) {
+				line = getLineNumber(ii);
 				break;
 			}
 		}
@@ -886,12 +1006,18 @@ namespace {
 	}
 
     static int getLineNumber(const Instruction *i) {
-	int line = 0;
-	if (MDNode *N = i->getMetadata("dbg")) {
-	   DILocation Loc(N);
-	   line = Loc.getLineNumber();
-	}
-	return line;
+		int line = 0;
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 8)
+			const DebugLoc& Loc = i->getDebugLoc();
+			if (Loc) 
+				line = Loc.getLine();
+#else
+			if (MDNode *N = i->getMetadata("dbg")) {
+			   DILocation Loc(N);
+			   line = Loc.getLineNumber();
+			}
+#endif	
+			return line;
     }
 
 	static int getLineNumber(const BasicBlock *b) {
@@ -916,8 +1042,12 @@ namespace {
 		return demangled_names[name];
 	char *dname = abi::__cxa_demangle(name.c_str(), NULL, NULL, &status);
 	if (dname) {
-		//errrawout << "demangle " << name << " to " << dname << '\n';
 		fname = dname;
+		size_t pos= fname.find('(');
+                if (pos != std::string::npos)
+                        fname = fname.substr(0, pos);
+                fname += "_" + name;
+		//errrawout << "demangle " << name << " to " << dname << '\n';
 		free(dname);
 	} else {
 		//errrawout << "demangle " << name << " failed\n";
@@ -932,7 +1062,8 @@ namespace {
 		if (GlobalVariable *pGV = dyn_cast<GlobalVariable>(pCE->getOperand(0))) {
 			if (pGV->hasInitializer())
 				if (ConstantDataSequential *pCA = dyn_cast<ConstantDataSequential>(pGV->getInitializer())) {
-				parm = pCA->getAsString();
+				if (pCA->isString())
+					parm = pCA->getAsString();
 			}
 		}
 	}
@@ -1114,7 +1245,7 @@ namespace {
 	bool getDependentInstr(const Instruction* i, std::set<std::pair<const Instruction*, int> >& dependentInstrs) {
 		const BasicBlock *bb = i->getParent();
 
-		//DEBUG(errrawout << "getDependentInstr " << bb << '@' << getLineNumber(bb) << '\n');
+		//DEBUG(errrawout << "\tgetDependentInstr " << bb << '@' << getLineNumber(bb) << '\n');
 		if (dependency.find(bb) != dependency.end()) {
 			dependentInstrs = dependency[bb];
 			return true;
@@ -1134,11 +1265,15 @@ namespace {
 		std::string dir=Dir, file=File;
 
 		if (loc_i) {
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 8)
+			#warning "dumpCallEx loc_i is not supported for LLVM 3.8!"
+#else
 			if (MDNode *N = loc_i->getMetadata("dbg")) {
 			   DILocation Loc(N);
 			   dir = Loc.getDirectory();
 			   file = Loc.getFilename();
 			}
+#endif
 		}
 		output << ModuleName << FIELD_SEP << dir << FIELD_SEP << file << FIELD_SEP << line << FIELD_SEP << funcName << FIELD_SEP << line << FIELD_SEP;
 		if (i) {
@@ -1152,11 +1287,12 @@ namespace {
 			std::set<std::pair<const Instruction*, int> > dependentInstrs;
 			if (getDependentInstr(i, dependentInstrs)) {
 				for (std::set<std::pair<const Instruction*, int> >::iterator ii = dependentInstrs.begin(); ii != dependentInstrs.end(); ii++) {
-					int line = getLineNumber(ii->first);
+					const std::string l = getLineID(*ii);
 					if (ii == dependentInstrs.begin())
-						dependency << line << ';' << ii->second;
+					  //dependency << line << '(' << ii->first << ')' << ';' << ii->second;
+					  dependency << l;
 					else
-						dependency << ',' << line << ';' << ii->second;
+					  dependency << ',' << l;
 				}
 			} else
 				dependency << 0;
@@ -1181,6 +1317,13 @@ namespace {
 				}
 #else 
 				BasicBlock *bb = ii->getParent();
+				for (auto ret : const_returns) {
+					if (postDT->dominates(ret.first, bb)) {
+						constReturn = ret.first;
+						break;
+					}
+				}
+/*
 				while (1) {
 					std::vector<BasicBlock*> succs;
 					for (succ_iterator I = succ_begin(bb), E = succ_end(bb); I != E; ++I) {
@@ -1200,6 +1343,7 @@ namespace {
 					} else
 						break;
 				}
+*/
 #endif
 			}
 			if (constReturn) {
@@ -1240,7 +1384,7 @@ namespace {
 						ptType = type->getPointerElementType();
 					else
 						ptType = type;
-					if (ptType->isStructTy())
+					if (ptType->isStructTy() && cast<StructType>(ptType)->hasName())
 						output << FIELD_SEP << ptType->getStructName().str() << '*';
 					else if (ptType->isFunctionTy()) {
 						std::string name;
@@ -1284,7 +1428,7 @@ namespace {
 				//	dumpUseOfCall(M, dirName, fileName, line, funcName, calleeName, parm, accType, callType, ii, pStore);
 				;
 				else {
-					dumpCallEx(getLineNumber(i), funcName, "", "", line, 6, ii, i);
+					dumpCallEx(getLineNumber(i), funcName, "", "", line, 6, &(*ii), i);
 				}
 			} else
 				DEBUG(errrawout << "use2 is not an instruction\n");
@@ -1292,7 +1436,7 @@ namespace {
 	}
 
 	void dumpCall(int line, const std::string &funcName, const std::string &calleeName, const std::string &parm, int accType, int callType, const BasicBlock::iterator& ii) {
-		dumpCallEx(line, funcName, calleeName, parm, accType, callType, ii, ii);
+		dumpCallEx(line, funcName, calleeName, parm, accType, callType, &(*ii), &(*ii));
 		// dump use of call
 		Instruction *call = dyn_cast<Instruction>(ii);
 		for (Value::use_iterator iu = call->use_begin(), eu = call->use_end(); iu != eu; iu++) {
@@ -1316,7 +1460,10 @@ namespace {
 			callee = internalFunctions[callee];
 		raw_string_ostream oss(caller);
 		//oss << gv->getName() << ',';
-		std::string name = value->getType()->getStructName();
+		Type* type = value->getType();
+		std::string name;
+		if (!dyn_cast<StructType>(type)->isLiteral())
+			name = type->getStructName();
 		if (name == "")
 			oss << vname;
 		else
@@ -1340,13 +1487,19 @@ namespace {
 				if (dyn_cast<ConstantExpr>(elm)) {
 					DEBUG(errrawout << "\t\tfield " << i << ": " << "expr" << '\n');
 					ConstantExpr *exp = dyn_cast<ConstantExpr>(elm);
-					CastInst *inst = dyn_cast<CastInst>(exp->getAsInstruction());
-					if (inst) {
-						Value *oprand = inst->getOperand(0);
+					Instruction *inst = exp->getAsInstruction();
+					CastInst *cinst = dyn_cast<CastInst>(inst);
+					if (cinst) {
+						Value *oprand = cinst->getOperand(0);
 						DEBUG(errrawout << "\t\t\toprand " << ": ");
 						oprand->getType()->print(errrawout);
 						DEBUG(errrawout << oprand->getName() << '\n');
 						callee = oprand->getName();
+					}
+					if (inst) {
+						inst->dropAllReferences();
+						if (inst->getParent())
+							inst->eraseFromParent();
 					}
 				} else {
 					DEBUG(errrawout << "\t\tfield " << i << ": ");
@@ -1366,7 +1519,8 @@ namespace {
 	void findFPinGV(Module &M) {
 		DEBUG(errrawout << "findFPinGV " << ModuleName << '\n');
 		for (llvm::Module::global_iterator ii = M.global_begin(); ii != M.global_end(); ++ii) { 
-	        GlobalVariable* gv = ii;
+	        GlobalVariable* gv = &(*ii);
+		if (gv->hasInitializer()) {
 			const Constant *value = gv->getInitializer();
 			std::string vname = gv->getName();
 			DEBUG(errrawout << "global variable " << vname << '\n');
@@ -1389,6 +1543,7 @@ namespace {
 				}
 			}
 		}
+		}
 	}
 
 	bool static compareByLineNumber(const BasicBlock *b1, const BasicBlock *b2) {
@@ -1408,7 +1563,7 @@ namespace {
 		std::queue<BasicBlock*> q;
 		std::set<BasicBlock*> v;
 
-		DEBUG(errrawout << "getPath " << conditionLine << ", " << succ->getName() << ':' << getLineNumber(succ) << '\n');
+		DEBUG(errrawout << "\tgetPath " << conditionLine << ", " << succ->getName() << ':' << getLineNumber(succ) << '\n');
 		q.push(succ);
 		while (!q.empty()) {
 			BasicBlock* bb = q.front();
@@ -1417,12 +1572,13 @@ namespace {
 			v.insert(bb);
 
 			if (bb != CD) {
-				int branchLine = getLineNumber(bb);
+			  //int branchLine = getLineNumber(bb);
 
 				for (succ_iterator I = succ_begin(bb), E = succ_end(bb); I != E; ++I) {
 					BasicBlock *succ = *I;
 					int line = getLineNumber(succ);
-					if ((line == 0) || ((line > 0) && (line > conditionLine) && (line > branchLine))) {
+					//if ((line == 0) || ((line > 0) && (line > conditionLine) && (line > branchLine))) {
+					if ((line == 0) || ((line > 0) && (line > conditionLine))) {
 						if (v.find(succ) == v.end()) {
 							q.push(succ);
 						}
@@ -1461,11 +1617,16 @@ namespace {
 
 		std::vector<BasicBlock*> succ;
 		for (succ_iterator I = succ_begin(bbb), E = succ_end(bbb); I != E; ++I) {
-		  
+
+		  DEBUG(errrawout << "\t" << getLineNumber(*I) << '\n');
 			succ.push_back(*I);
 		}
 		DEBUG(errrawout << "\t" << succ.size() << " successors." << '\n');
-		BasicBlock* CD = postDT->findNearestCommonDominator(succ[0], succ[1]);
+		BasicBlock* CD; 
+		if (succ[0] != NULL && succ[1] != NULL)
+			CD = postDT->findNearestCommonDominator(succ[0], succ[1]);
+		else
+			CD = NULL;
 		
 		if (CD == NULL)
 			DEBUG(errrawout << "\tWarning: No CommonDominator" << '\n');
@@ -1474,43 +1635,71 @@ namespace {
 
 		std::vector<std::vector<BasicBlock*> > paths, origPaths;
 		for (size_t i = 0; i < succ.size(); i++) {
-			paths.push_back(getPath(conditionLine, succ[i], CD));
+		  std::vector<BasicBlock*> p = getPath(conditionLine, succ[i], CD);
+		  if (p.size() > 0)
+			paths.push_back(p);
 		}
+		//if ((paths[0].back() == paths[1].front()) || dyn_cast<UnreachableInst>(paths[0].back()->getTerminator())) {
+		if (paths.size() > 1 && (paths[0].back() == paths[1].front())) {
+		  DEBUG(errrawout << "\tNo else block\n");
+		  paths.pop_back();
+		}
+		
 		//assert(count >= 2);
 		//if (paths.size() > 1)
-		origPaths = paths;
+		//origPaths = paths;
 		std::sort(paths.begin(), paths.end(), compareBBsByLineNumber);
 
 		//for (size_t i = 0; i < paths.size(); i++)
 		//	DEBUG(errrawout << "\tSuccessor@" << getLineNumber(paths[i][0]) << '\n');
 
-		if (CD == NULL) {
-			std::vector<BasicBlock *> intersection = paths[0];
+		std::vector<BasicBlock *> intersection;
+		if (paths.size() > 1) {
+			intersection = paths[0];
 			for (size_t i = 1; i < paths.size(); i++) {
 				std::vector<BasicBlock *> tmp;
 				std::set_intersection(intersection.begin(), intersection.end(), paths[i].begin(), paths[i].end(), back_inserter(tmp), compareByLineNumber);
-				intersection = tmp;
+				if (tmp.size() > 0)
+				   intersection = tmp;
+				else
+				  intersection.clear();
 			}
-			DEBUG(errrawout << '\t' << "intersection " << intersection.size() << '\n');
+		
+		        DEBUG(errrawout << '\t' << "intersection " << intersection.size() << '\n');
 			for (size_t i = 0; i < intersection.size(); i++)
-				DEBUG(errrawout << '\t' << "intersection " << i << ':' << getLineNumber(intersection[i]) << '\n');
+			  DEBUG(errrawout << '\t' << "intersection " << i << ':' << getLineNumber(intersection[i]) << '\n');
 
-			CD = intersection[0];
-			std::set<BasicBlock *> visited;
-			while (getLineNumber(CD) < conditionLine) {
-				visited.insert(CD);
-				DEBUG(errrawout << '\t' << "Finding CD" << getLineNumber(CD) << '\n');
-				if (succ_begin(CD) == succ_end(CD))
-					break;
-				BasicBlock *next = *succ_begin(CD);
-				if (visited.find(next) == visited.end()) {
-					CD = next;
-				} else
-					break;
+			// fix the case when only the then block exists
+			if (intersection.size() > 0) {
+			if (intersection[0] == paths[0][0]) {
+			  paths.erase(paths.begin());
+			  DEBUG(errrawout << '\t' << "Removed branch 0\n");
+			} else if (intersection[0] == paths[1][0]) {
+			  paths.pop_back();
+			  DEBUG(errrawout << '\t' << "Removed branch 1\n");
+		        }
 			}
-			DEBUG(errrawout << "\tFound CommonDominator@" << getLineNumber(CD) << '\n');
 		}
-		paths = origPaths;
+
+		if ((CD == NULL) && (paths.size() > 1)  && (intersection.size() > 0)) {
+		   CD = intersection[0];
+		   std::set<BasicBlock *> visited;
+		   while (getLineNumber(CD) < conditionLine) {
+			visited.insert(CD);
+			DEBUG(errrawout << '\t' << "Finding CD" << getLineNumber(CD) << '\n');
+			if (succ_begin(CD) == succ_end(CD))
+				break;
+			BasicBlock *next = *succ_begin(CD);
+			if (visited.find(next) == visited.end()) {
+				CD = next;
+			} else
+				break;
+		   }
+		}
+		if (CD)
+		  DEBUG(errrawout << "\tFound CommonDominator@" << getLineNumber(CD) << '\n');
+		
+		//paths = origPaths;
 		for (size_t i = 0; i < paths.size(); i++) {
 			DEBUG(errrawout << '\t' << "branch " << i << ':' << '\n');
 			for (std::vector<BasicBlock*>::iterator ii = paths[i].begin(), e = paths[i].end(); ii != e; ++ii) {
@@ -1556,7 +1745,8 @@ namespace {
 		std::string vname;
 		Type *type = gep->getPointerOperandType()->getPointerElementType();
 		if (type->isStructTy()) {
-			vname = type->getStructName();
+			if (!dyn_cast<StructType>(type)->isLiteral())
+				vname = type->getStructName();
 			if (checkConf && Structs.find(vname) == Structs.end()) {
 				vname = "";
 			} else {
@@ -1591,12 +1781,22 @@ namespace {
 			oprand = inst->getOperand(0);
 
 		if (ConstantExpr* cexp = dyn_cast<ConstantExpr>(oprand)) {
-			gep = dyn_cast<GetElementPtrInst>(cexp->getAsInstruction());
-		} else 
+			Instruction *inst = cexp->getAsInstruction();
+			gep = dyn_cast<GetElementPtrInst>(inst);
+			if (gep) {
+				vname = getStructVarNameFromGEP(gep, checkConf);
+			}
+			inst->dropAllReferences();
+			if (inst->getParent())
+				inst->eraseFromParent();
+		} else {
 			gep = dyn_cast<GetElementPtrInst>(oprand);
+			if (gep)
+				vname = getStructVarNameFromGEP(gep, checkConf);
+		}
 		if (gep) {
 			//Value *arg = gep->getPointerOperand();
-			vname = getStructVarNameFromGEP(gep, checkConf);
+			//delete gep;
 		} else if (includeGlobalVar) {
 			if (GlobalVariable *pGV = dyn_cast<GlobalVariable>(oprand)) {
 				vname = pGV->getName();
@@ -1687,7 +1887,18 @@ namespace {
 			ret_value = ss.str();
 		} else if (dyn_cast<ConstantPointerNull>(pConst)) {
 			ret_value = "NULL";
-		}
+		} else if (ConstantExpr *pExp = dyn_cast<ConstantExpr>(pConst)) {
+			if (IntToPtrInst *pIntPtr = dyn_cast<IntToPtrInst>(pExp->getAsInstruction())) {
+				ConstantInt *pInt = dyn_cast<ConstantInt>(pIntPtr->getOperand(0));
+				std::stringstream ss;
+				ss << pInt->getSExtValue();
+				ret_value = ss.str();
+				pIntPtr->dropAllReferences();
+				if (pIntPtr->getParent())
+					pIntPtr->eraseFromParent();
+			}
+		} else
+			err = -1;
 		return err;
 	}
 
@@ -1749,7 +1960,7 @@ namespace {
 		int line = 0;
 		for (BasicBlock::iterator i=bb->begin(), iend=bb->end(); i != iend; ++i){
 			if (dyn_cast<LoadInst>(i) || dyn_cast<StoreInst>(i) || dyn_cast<BranchInst>(i) || dyn_cast<ReturnInst>(i)) {
-				line = getLineNumber(i);
+				line = getLineNumber(&(*i));
 			} else
 				return 0;
 		}
@@ -1912,12 +2123,24 @@ namespace {
 		dumpCallEx(line, funcName, "", ret_value, -2, 7, NULL, ins);
 	}
 
+	std::set<Instruction*> crcc;
+	// function wrapper to prevent infinite recursion
+	int CheckReturnConstOrCallEx(std::string funcName, StoreInst *pStore, CallInst *pCall) {
+		crcc.clear();
+		return CheckReturnConstOrCall(funcName, pStore, pCall);
+	}
+
 	int CheckReturnConstOrCall(std::string funcName, StoreInst *pStore, CallInst *pCall) {
 		int ret = 0;
 		int line = 0;
 		Value *arg = NULL;
 		std::string var;
 
+		if (crcc.find(pStore) != crcc.end()) {
+			DEBUG(errrawout << '\t' << "recursive store detected " << getLineNumber(pStore) << '\n');
+			return 0;
+		}
+		crcc.insert(pStore);
 		if (pStore) {
 			line = getLineNumber(pStore);
 			arg = pStore->getValueOperand();
@@ -1937,7 +2160,7 @@ namespace {
 			// Skip const 0
 			std::string ret_value;
 			if (getConstValue(pConst, ret_value) == -1) {
-				DEBUG(errrawout << '\t' << "ignore return const zero at line " << getLineNumber(pStore) << '\n');
+				DEBUG(errrawout << '\t' << "cannot identify constant return const at line " << getLineNumber(pStore) << '\n');
 				return ret;
 			}
 			//if (DT->dominates(pStore, loadInst)) {
@@ -1994,12 +2217,12 @@ namespace {
 						for (std::list<Instruction *>::iterator it = lu.begin(); it != lu.end(); it++) {
 							DEBUG(errrawout << '\t' << "check def at line " << getLineNumber(*it) << '\n');
 							if (StoreInst *pStore = dyn_cast<StoreInst>(*it)) {
-								count_const_ret += CheckReturnConstOrCall(funcName, pStore, NULL);
+								count_const_ret += CheckReturnConstOrCallEx(funcName, pStore, NULL);
 							}
 						}
 					//}
 			} else if ((callInst = dyn_cast<CallInst>(retVal))) {
-				CheckReturnConstOrCall(funcName, NULL, callInst);
+				CheckReturnConstOrCallEx(funcName, NULL, callInst);
 			} else if ((phiNode = dyn_cast<PHINode>(retVal))) {
 				for (unsigned i = 0; i < phiNode->getNumIncomingValues(); i++) {
 					Value *val = phiNode->getIncomingValue(i);
@@ -2064,10 +2287,10 @@ namespace {
 			for (BasicBlock::iterator i=bb->begin(), iend=bb->end(); i != iend; ++i){
 				if (BranchInst *branch = dyn_cast<BranchInst>(i)) {
 					if (branch->isConditional()) {
-						labelDependency(F, bb, branch);
+						labelDependency(F, &(*bb), branch);
 					}
 				} else if (SwitchInst *branch = dyn_cast<SwitchInst>(i)) {
-					labelDependency(F, bb, branch);
+					labelDependency(F, &(*bb), branch);
 				}
 			}
 		}
@@ -2228,10 +2451,17 @@ namespace {
 			std::string vname;
 			CallInst *call = dyn_cast<CallInst>(i);
 
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 8)
+			const DebugLoc& Loc = i->getDebugLoc();
+			if (Loc) 
+				Line = Loc.getLine();
+#else
 			if (MDNode *N = i->getMetadata("dbg")) {
 			   DILocation Loc(N);
 			   Line = Loc.getLineNumber();
 			}
+#endif
+
 			if (Line > 0) {
 				analyzed_lines[funcName].insert(Line);
 				if (first_lines.find(funcName) == first_lines.end()) {
@@ -2268,7 +2498,7 @@ namespace {
 												std::string callee_name = decorateInternalName(callee);
 												std::stringstream ss;
 												std::map<CallInst *, std::pair<int, int> >::iterator it = CallErrorHandling[var].begin();
-												ss << it->second.first << ',' << it->second.second << ',' << getNextLineNumber(bb, i);
+												ss << it->second.first << ',' << it->second.second << ',' << getNextLineNumber(&(*bb), i);
 												dumpCallEx(Line, funcName, callee_name, ss.str(), -2, 9, NULL, NULL);
 												DEBUG(errrawout << '\t' << "call at line " << getLineNumber(call) << " misses error handling\n");
 												DEBUG(errrawout << "\t\t" << "add error handling " << it->second.first << " - " << it->second.second << '\n');
@@ -2306,9 +2536,12 @@ namespace {
 				vname = getLoadStructVarName(load, 0);
 			} else if (StoreInst *store = dyn_cast<StoreInst>(i)) {
 				GetElementPtrInst *gep = NULL;
+				bool erase = false;
+				Instruction *inst = NULL;
 				if (ConstantExpr* cexp = dyn_cast<ConstantExpr>(store->getPointerOperand())) {
-					gep = dyn_cast<GetElementPtrInst>(cexp->getAsInstruction());
-				
+					inst = cexp->getAsInstruction();	
+					gep = dyn_cast<GetElementPtrInst>(inst);
+					erase = true;
 				} else 
 					gep = dyn_cast<GetElementPtrInst>(store->getPointerOperand());
 				if (gep) {
@@ -2319,6 +2552,11 @@ namespace {
 						DEBUG(errrawout << "Store struct " << arg->getName() << ':' << type->getStructName() << " at line " << Line << '\n');
 #endif
 					}
+				}
+				if (erase) {
+					inst->dropAllReferences();
+					if (inst->getParent())
+						inst->eraseFromParent();
 				}
 				// handle reference to function pointer
 				Value *arg = store->getValueOperand();
@@ -2333,9 +2571,16 @@ namespace {
 					std::string name;
 					ConstantExpr *exp = dyn_cast<ConstantExpr>(arg);
 					if (exp) {
-						CastInst *inst = dyn_cast<CastInst>(exp->getAsInstruction());
-						if (inst)
-							arg = inst->getOperand(0);
+						Instruction *inst = exp->getAsInstruction();
+						CastInst *cinst = dyn_cast<CastInst>(inst);
+						if (cinst) {
+							arg = cinst->getOperand(0);
+						}
+						if (inst) {
+							inst->dropAllReferences();
+							if (inst->getParent())
+								inst->eraseFromParent();
+						}
 					}
 					if (dyn_cast<Function>(arg))
 						name = decorateInternalName(dyn_cast<Function>(arg));
@@ -2367,7 +2612,7 @@ namespace {
 #endif
 					std::string parm;
 					if (arg)
-						parm = ConvArgToStr(i, arg);
+						parm = ConvArgToStr(&(*i), arg);
 					else if (APIMethods[fname].argNum == -1) {
 						parm = "\"INT_OPTION\"";
 					}
@@ -2402,9 +2647,16 @@ namespace {
 			}
 			// For dependency
 			std::set<std::pair<const Instruction*, int> > dependentInstrs;
-			if (!func && !load && Line && getDependentInstr(i, dependentInstrs))
+			//if (!func && !load && Line && getDependentInstr(i, dependentInstrs))
+			
+			if (Line) {
+			  if (getDependentInstr(&(*i), dependentInstrs)) {
+			    //DEBUG(errrawout << "print dependency for " << funcName << ':' << Line << ":yes\n");
 				dumpCall(Line, funcName, "", "", -2, 3, i);
+			  } //else
+			    //DEBUG(errrawout << "print dependency for " << funcName << ':' << Line << ":no\n");
 			}
+		    }
 		}
     }
 
@@ -2525,10 +2777,13 @@ namespace {
 	  AU.setPreservesCFG();
 	  //AU.addRequired<LoopInfo>();
 	  AU.addRequired<PostDominatorTree>();
-	  // LLVM 3.3
-	  //AU.addRequired<DominatorTreeWrapperPass>();
+	  // LLVM 3.3, 3.8
+#if LLVM_VERSION_CODE >= LLVM_VERSION(3, 8)
+	  AU.addRequired<DominatorTreeWrapperPass>();
 	  // LLVM 3.4.2
+#else
 	  AU.addRequired<DominatorTree>();
+#endif
     }
 
 	void findCalls(Function *F, VarMap& LSV){
