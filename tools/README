@@ -1,0 +1,42 @@
+Talos consists of a front end, Talos analyzer, and a backend. The frontend is a compiler extension that compiles C/C++ source code into LLVM bitcode and analyzes the bitcode. The backend takes the output of the frontend as input, and identifies error return values.
+
+[frontend]
+
+1. set up TALOS_DIR
+$ export TALOS_DIR=/data/public/Talos
+
+You may want to add the above command to your ~/.bashrc file so the command will be executed automatically each time you login.
+
+2. configure the project with Talos analyzer as the compiler
+$ CC=$TALOS_DIR/gcc.talos CXX=$TALOS_DIR/g++.talos ./configure
+
+3. set up the full pathname for the output file of Talos analyzer
+$ export ANALYZER_OUTPUT=/home/user/prog.talos
+
+4. build the project with gcc.talos
+$ make clean
+$ make
+
+The output of Talos analyzer would be in the file $ANALYZER_OUTPUT.
+
+
+Example usage for tiff-3.8.2
+1. set up settings for Talos analyzer
+$ export TALOS_DIR=/data/public/Talos
+$ export ANALYZER_OUTPUT=/home/user/tiff-3.8.2/tiff.talos
+
+2. configure the tiff project
+$ cd tiff-3.8.2
+$ CC=$TALOS_DIR/gcc.talos CXX=$TALOS_DIR/g++.talos ./configure
+
+3. build the tiff project
+$ make clean
+$ make -j8
+
+4. check the output of Talos analyzer
+$ cat tiff.talos
+
+5. examine errors produced by Talos analyzer
+$ cat opt.log
+
+Note that you should change the value of ANALYZER_OUTPUT for different projects so that Talos saves output for them in different output files.
