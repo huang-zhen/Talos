@@ -1619,11 +1619,12 @@ class Talos:
 			funcsToDisable.clear()
 
 	def is_func_defined_by_macro(self, path, func):
+		f = func
 		# restore original function name for static functions
 		func = self.get_orig_func_name(func)
-		startLine = self.get_func_decl_line(path, func)
+		startLine = self.get_func_decl_line(path, f)
 		if startLine:
-			line = lines[startLine - 1]
+			line = self.sourceCode[path][startLine - 1]
 			print >>sys.stderr, '----', line
 			pos = line.find(func)
 			print >>sys.stderr, 'pos:', pos
@@ -2267,6 +2268,9 @@ class Talos:
 		else:
 			return (0, None)
 
+	def get_func_file(self, func):
+		return self.FunctionLines[func][3]
+
 	def get_func_decl_line(self, filename, func):
 		if filename not in self.sourceCode:
 			self.sourceCode[filename] = self.get_file_lines(filename)
@@ -2330,6 +2334,21 @@ class Talos:
 			startLine += 1
 		print >>sys.stderr, 'Unable to find start line for', func, '@', origStartLine
 		return origStartLine
+
+	def get_func_end_line(self, filename, func):
+		line = self.get_func_decl_line(filename, func)
+		count = 0
+		while line < len(self.sourceCode[filename]) + 1:
+			#print 'checking line ', line, 'count=', count
+			for c in self.sourceCode[filename][line - 1].strip():
+				if c == '{':
+					count += 1
+				elif c == '}':
+					count -= 1
+					if count == 0:
+						return line
+			line += 1
+		return 0
 
 	def get_func_size(self, func):
 		return self.FunctionLines[func][0]
@@ -2705,7 +2724,7 @@ class Talos:
 				add_error_return(0, parts[0], None, int(parts[1], 0))
 		inp.close()
 
-	def __init__(self, args):
+	def __init__(self, arglst):
 		self.Functions = {}
 		self.BBs = {}
 		self.AllKeys = {}
@@ -2759,6 +2778,31 @@ class Talos:
 		self.ProtectedByCaller = []
 		self.ExecFuncNumber = {}
 		self.sourceCode = {}
+
+		parser = argparse.ArgumentParser()
+		parser.add_argument('-P', dest='pattern', help='Pattern to match setting names', nargs=1)
+		parser.add_argument('-d', dest='Debug', help='Enable/disable debugging', action='store_true')
+		parser.add_argument('input', help='input [Location]', nargs='+')
+		parser.add_argument('-L', dest='NameList', help='Filename of the list of setting names', nargs=1)
+		parser.add_argument('-N', dest='PathCount', help='Limit number of call paths', default=0, type=int)
+		parser.add_argument('-C', dest='ControlPoints', help='Filename of the control points', nargs=1)
+		parser.add_argument('-E', dest='EntryFunc', help='Decorated name of the entry function', nargs=1, required=True)
+		parser.add_argument('-i', dest='InteractiveMode', help='Runs in interactive mode', action='store_true')
+		parser.add_argument('-v', dest='Verbose', help='Output in Verbose mode', action='store_true')
+		parser.add_argument('-I', dest='IgnoreEntryFunc', help='Ignore entry function in finding call paths', action='store_true')
+		parser.add_argument('-S', dest='AddSecuritySetting', help='Add security settings', nargs=1)
+		parser.add_argument('-R', dest='DelSecuritySetting', help='Remove security settings', nargs=1)
+		parser.add_argument('-w', dest='IdentifyWorkarounds', help='Identify All Workarounds', action='store_true')
+		parser.add_argument('-W', dest='IdentifyOneWorkaround', help='Identify a workaround', action='store_true')
+		parser.add_argument('-O', dest='SettingsFile', help='Filename of security settings', nargs=1)
+		parser.add_argument('-K', dest='CheckOnly', help='Do not apply security settings', action='store_true')
+		parser.add_argument('-G', dest='AddExecLog', help='Add execution logging', nargs=1)
+		parser.add_argument('-F', dest='ConfigFile', help='Filename of configuration file', nargs=1)
+		parser.add_argument('-a', dest='APIErrorSpec', help='Filename of API error specification', nargs=1)
+		parser.add_argument('-D', dest='CondExecFuncs', help='Identify functions taht are executed conditionaly', action='store_true')
+		parser.add_argument('-B', dest='PatchFunc', help='Patch a specified function', nargs=1)
+
+		args = vars(parser.parse_args(arglst))
 
 		if args['APIErrorSpec']:
 		    self.APIErrorSpec = args['APIErrorSpec'][0]
@@ -2871,11 +2915,14 @@ class Talos:
 		self.build_call_graph(self.EntryFunc)
 		print 'remove_unreachable_calls...'
 		self.remove_unreachable_calls()
-		linesFilename = os.path.splitext(os.path.basename(self.InputFile))[0] + '.lines'
+		linesFilename = os.path.join(os.path.dirname(self.InputFile), os.path.splitext(os.path.basename(self.InputFile))[0] + '.lines')
 		if os.path.exists(linesFilename):
+			self.load_lines_file(linesFilename)
+		elif os.path.exists(os.path.join(os.environ['TALOS_DIR'],linesFilename)):
 			self.load_lines_file(os.path.join(os.environ['TALOS_DIR'],linesFilename))
 		else:
-			print >> sys.stderr, "Warning: Lines file " + linesFilename + " does not exist!"
+			print >> sys.stderr, "Error: Lines file " + linesFilename + " does not exist!"
+			return
 
 	def main(self):
 		if self.InteractiveMode and (self.AddSecuritySetting or self.DelSecuritySetting):
@@ -2912,7 +2959,7 @@ class Talos:
 		file.close()
 		sys.stdout = oldstdout
 
-		linesFilename = os.path.splitext(os.path.basename(self.InputFile))[0] + '.lines'
+		linesFilename = os.path.join(os.path.dirname(self.InputFile), os.path.splitext(os.path.basename(self.InputFile))[0] + '.lines')
 		if os.path.exists(linesFilename):
 			TotLines = self.load_lines_file(os.path.join(os.environ['TALOS_DIR'],linesFilename))
 		else:
@@ -2933,6 +2980,9 @@ class Talos:
 
 		print 'All Functions:', len(self.Functions)
 		print 'Reachable Functions:', len(self.ReachableFuncs)
+		if self.ReachableFuncs == 0:
+			print "Error: no reachable lines. Please check the name of entry function."
+			return
 		#prioritize_heuristics()
 		TotFuncs = []
 		TotFuncRetPointer = []
@@ -3060,33 +3110,7 @@ if __name__ == "__main__":
 	# main function
 	start_time = time.time()
 
-	parser = argparse.ArgumentParser()
-	parser.add_argument('-P', dest='pattern', help='Pattern to match setting names', nargs=1)
-	parser.add_argument('-d', dest='Debug', help='Enable/disable debugging', action='store_true')
-	parser.add_argument('input', help='input [Location]', nargs='+')
-	parser.add_argument('-L', dest='NameList', help='Filename of the list of setting names', nargs=1)
-	parser.add_argument('-N', dest='PathCount', help='Limit number of call paths', default=0, type=int)
-	parser.add_argument('-C', dest='ControlPoints', help='Filename of the control points', nargs=1)
-	parser.add_argument('-E', dest='EntryFunc', help='Decorated name of the entry function', nargs=1, required=True)
-	parser.add_argument('-i', dest='InteractiveMode', help='Runs in interactive mode', action='store_true')
-	parser.add_argument('-v', dest='Verbose', help='Output in Verbose mode', action='store_true')
-	parser.add_argument('-I', dest='IgnoreEntryFunc', help='Ignore entry function in finding call paths', action='store_true')
-	parser.add_argument('-S', dest='AddSecuritySetting', help='Add security settings', nargs=1)
-	parser.add_argument('-R', dest='DelSecuritySetting', help='Remove security settings', nargs=1)
-	parser.add_argument('-w', dest='IdentifyWorkarounds', help='Identify All Workarounds', action='store_true')
-	parser.add_argument('-W', dest='IdentifyOneWorkaround', help='Identify a workaround', action='store_true')
-	parser.add_argument('-O', dest='SettingsFile', help='Filename of security settings', nargs=1)
-	parser.add_argument('-K', dest='CheckOnly', help='Do not apply security settings', action='store_true')
-	parser.add_argument('-G', dest='AddExecLog', help='Add execution logging', nargs=1)
-	parser.add_argument('-F', dest='ConfigFile', help='Filename of configuration file', nargs=1, required=True)
-	parser.add_argument('-a', dest='APIErrorSpec', help='Filename of API error specification', nargs=1)
-	parser.add_argument('-D', dest='CondExecFuncs', help='Identify functions taht are executed conditionaly', action='store_true')
-	parser.add_argument('-B', dest='PatchFunc', help='Patch a specified function', nargs=1)
-
-
-	args = vars(parser.parse_args(sys.argv[1:]))
-
-	talos = Talos(args)
+	talos = Talos(sys.argv[1:])
 
 	talos.main()
 

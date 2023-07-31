@@ -27,7 +27,7 @@ std_make() {
 }
 
 #PROJ_DIR=~/Projects/Talos
-PROJ_DIR=~/code/Talos
+PROJ_DIR=$TALOS_DIR
 $PROJ_DIR/tools/kill_lock
 if [ ! $# == 1 ]; then
 	echo "Usage: analyze_app application"

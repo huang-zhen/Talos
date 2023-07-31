@@ -35,6 +35,7 @@
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/InstrTypes.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Support/InstIterator.h"
 // LLVM 3.3
 //#include "llvm/IR/CFG.h"
 // LLVM 3.4.2
@@ -735,22 +736,36 @@ namespace {
 			val = pLoad->getPointerOperand();
 			//DEBUG(errrawout << "\tLoad " << val << '\n');
 		}
-		if (dyn_cast<GlobalVariable>(val))
+		if (dyn_cast<GlobalVariable>(val)) {
+			DEBUG(errrawout << "\tAccessing global " << val->getName() << '\n');
 			return true;
-		else if (arguments.find(val) != arguments.end())
+		} else if (arguments.find(val) == arguments.end()) {
+			DEBUG(errrawout << "\tAccessing non-argument " << val->getName() << '\n');
 			return true;
-		else
+		} else
 			return false;
 	}
 
 	bool BBModifyLocalOnly(BasicBlock *bb, std::set<Value *>& arguments) {
 		for (BasicBlock::iterator i=bb->begin(), iend=bb->end(); i != iend; ++i){
-			if (StoreInst *pStore = dyn_cast<StoreInst>(i)) {
+			if (AllocaInst *pAlloc = dyn_cast<AllocaInst>(i)) {
+				arguments.insert(pAlloc);
+			} else if (StoreInst *pStore = dyn_cast<StoreInst>(i)) {
 				//DEBUG(errrawout << "\tChecking store at line " << getLineNumber(pStore) << '\n');
 				Value *arg = pStore->getPointerOperand();
-				if (isNonLocalVar(arg, arguments))
+				if (AllocaInst *pAlloc = dyn_cast<AllocaInst>(arg)) {
+					if (arguments.find(pStore->getValueOperand()) != arguments.end()) {
+						arguments.insert(pAlloc);
+						//DEBUG(errrawout << "\tAdding alloc " << pAlloc << '\n');
+
+					}
+				} else {
+				Value *val = pStore->getValueOperand();
+				if (!dyn_cast<Constant>(val) && (arguments.find(val) == arguments.end()))
 					return false;
-				else if (LoadInst *pLoad = dyn_cast<LoadInst>(arg)) {
+				//if (isNonLocalVar(arg, arguments))
+				//	return false;
+				if (LoadInst *pLoad = dyn_cast<LoadInst>(arg)) {
 					std::list<Instruction *> lu = cfg->get_use_def(pLoad);
 					for (std::list<Instruction *>::iterator it = lu.begin(); it != lu.end(); it++) {
 						if (StoreInst *pStore = dyn_cast<StoreInst>(*it)) {
@@ -765,12 +780,9 @@ namespace {
 					pGEP = dyn_cast<GetElementPtrInst>(pExp->getAsInstruction());
 					if (isNonLocalVar(pGEP->getPointerOperand(), arguments))
 						return false;
-				} else if (AllocaInst *pAlloc = dyn_cast<AllocaInst>(arg)) {
-					if (arguments.find(pStore->getValueOperand()) != arguments.end()) {
-						arguments.insert(pAlloc);
-						DEBUG(errrawout << "\tAdding alloc " << pAlloc << '\n');
-					}
 				}
+				}
+#if 0
 			} else if (CallInst *call = dyn_cast<CallInst>(i)) {
 				Function* callee = call->getCalledFunction();
 				if (callee) {
@@ -785,6 +797,7 @@ namespace {
 				return false;
 			} else if (dyn_cast<InvokeInst>(i)) {
 				return false;
+#endif
 			} else if (LoadInst *pLoad = dyn_cast<LoadInst>(i)) {
 				if (arguments.find(pLoad->getPointerOperand()) != arguments.end()) {
 					arguments.insert(pLoad);
@@ -845,6 +858,7 @@ namespace {
 			path.pop_back();
 			return "";
 		}
+#if 0 // does not concern constant return 
 		if (const_returns.find(bb) != const_returns.end()) {
 #if 0
 			std::vector<int> lines;
@@ -860,6 +874,7 @@ namespace {
 			return const_returns[bb].second;
 #endif
 		}
+#endif
 		visited.insert(bb);
 		for (succ_iterator I = succ_begin(bb), E = succ_end(bb); I != E; ++I) {
 			std::string res = pathModifyLocalOnly(*I, visited, arguments, path);
@@ -879,19 +894,24 @@ namespace {
 		std::list<BasicBlock *> path;
 		for (Function::arg_iterator I = F->arg_begin(), E = F->arg_end(); I != E; ++I) {
 			Argument* arg = &*I;
-#if 1
+			DEBUG(errrawout << "\tArg: " << arg->getName() << '\n');
 			// Check whether it's passed by reference
+#if 1
 			const Type* T = arg->getType();
-			if (T->isPointerTy() || T->isArrayTy()) {
+			if (!T->isPointerTy()) {
+				DEBUG(errrawout << "\tAdding argument " << arg->getName() << '\n');
 				arguments.insert(arg);
-				DEBUG(errrawout << "\targ:" << arg->getName() << '\n');
 			}
 #else
 			arguments.insert(arg);
-			DEBUG(errrawout << "\targ:" << arg->getName() << '\n');
 #endif
 		}
-		return pathModifyLocalOnly(F->begin(), visited, arguments, path);
+		//return pathModifyLocalOnly(F->begin(), visited, arguments, path);
+		for (Function::iterator i = F->begin(), e = F->end(); i != e; ++i) {
+			if (!BBModifyLocalOnly(i, arguments))
+				return "";
+		}
+		return "0";
 	}
 
 	// get the next line number of an instruction within a BB
@@ -940,8 +960,13 @@ namespace {
 		return demangled_names[name];
 	char *dname = abi::__cxa_demangle(name.c_str(), NULL, NULL, &status);
 	if (dname) {
+		size_t pos= dname.find('(');
+		if (pos != std::string::npos)
+			fname = dname.substr(0, pos);
+		else
+			fname = dname;
+		fname += "_" + name;
 		//errrawout << "demangle " << name << " to " << dname << '\n';
-		fname = dname;
 		free(dname);
 	} else {
 		//errrawout << "demangle " << name << " failed\n";
