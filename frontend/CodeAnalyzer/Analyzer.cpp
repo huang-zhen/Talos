@@ -451,6 +451,7 @@ namespace {
 	std::map<Value *, std::map<CallInst *, std::pair<int, int> > > CallErrorHandling;
 	std::map<CallInst *, CmpInst *> checkedCalls;
 	std::map<std::string, std::string> prototypes;
+	std::map<std::string, std::pair<std::string, std::string> > FuncLocations; 
 
     Analyzer() : ModulePass(ID), cfg(NULL), df(NULL), fp_count(0) {}
 
@@ -625,36 +626,43 @@ namespace {
 				Dir.erase(Dir.size() - 1);
 	}
 
-	void getFilePath(Module &M, Function *F) {
+	void getModulePath(Module &M) {
+	  NamedMDNode *nmd = M.getNamedMetadata("llvm.dbg.cu");
+	  if (nmd) {
+	  	MDNode *md = nmd->getOperand(0);
+		for (unsigned i = 0; i < md->getNumOperands(); i++) {
+	  		if (DIFile *pLoc = dyn_cast<DIFile>(md->getOperand(i))) {
+				Dir = pLoc->getDirectory();
+				File = pLoc->getFilename();
+				DEBUG(errrawout << "File: " << File << '\n');
+				DEBUG(errrawout << "Directory: " << Dir << '\n');
+				break;
+			}
+		}
+	  }
+	}
+
+	void getFuncLocation(Module &M, Function *F) {
+		std::string funcName = decorateInternalName(F);
+		DEBUG(errrawout << "getFuncLocation " << funcName << '\n');
 #if LLVM_VERSION_CODE >= LLVM_VERSION(3, 8)
 		SmallVector<std::pair<unsigned, MDNode *>, 4> MDs;
 		F->getAllMetadata(MDs);
 		for (auto &MD : MDs) {
 		  if (MDNode *N = MD.second) {
 			 if (auto *subProgram = dyn_cast<DISubprogram>(N)) {
-				//errs() << subProgram->getLine() << '\n';
-				Dir = subProgram->getDirectory();
-				File = subProgram->getFilename();
+				FuncLocations[funcName] = std::make_pair(subProgram->getDirectory(), subProgram->getFilename());
+				break;
 			 }
 		  }
 		}
-#else
-	  NamedMDNode *nmd = M.getNamedMetadata("llvm.dbg.cu");
-	  if (nmd) {
-		if (nmd->getNumOperands() > 0) {
-	  		MDNode *md = nmd->getOperand(0);
-	  		DIScope Loc(md);
-			splitLocPath(&Loc, Dir, File);
-			DEBUG(errrawout << "File: " << File << '\n');
-			DEBUG(errrawout << "Directory: " << Dir << '\n');
-		}
-	  }
 #endif
 	}
 
     virtual bool runOnModule(Module &M) {
 	  ModuleName = M.getModuleIdentifier();
       DEBUG(errrawout << "\nModule: " << ModuleName << '\n');
+	  getModulePath(M);
 
       LLVMContext &Context = M.getContext();
       UIntPtr = Type::getInt32PtrTy(Context);
@@ -694,7 +702,7 @@ namespace {
 	if (F->empty())
 		continue;
 
-	getFilePath(M, &*F);
+	getFuncLocation(M, &*F);
 	reachDefAnalysis(FunPtr);	// Initialize cfg, df, and use-def
 	postDT = &getAnalysis<PostDominatorTree>(*F);
 	// LLVM 3.3, 3.8
@@ -725,9 +733,14 @@ namespace {
 		int first_line = 0;
 		if (first_lines.find(it->first) != first_lines.end())
 			first_line = first_lines[it->first];
-		DEBUG(errrawout << "\t*Analyzed " << it->second.size() << "@" << first_line << " lines for " << it->first << ' ' << Dir << '/' << File << ' ' << prototypes[it->first] << '\n');
+
+		std::string funcDir = FuncLocations[it->first].first;
+		std::string funcFile = FuncLocations[it->first].second;
+		std::string protoType = prototypes[it->first];
+
+		DEBUG(errrawout << "\t*Analyzed " << it->second.size() << "@" << first_line << " lines for " << it->first << ' ' << funcDir << '/' << funcFile << ' ' << protoType << '\n');
 		std::stringstream ss;
-		ss << it->second.size() << ';' << Dir << '/' << File << ';' << prototypes[it->first];
+		ss << it->second.size() << ';' << funcDir << '/' << funcFile << ';' << protoType;
 		dumpCallEx(first_line, it->first, "", ss.str(), -2, 14, NULL, NULL);
 	}
 	DEBUG(errrawout << "Analyzed " << tot_analyzed_lines << " lines for " << Dir << '/' << File << '\n');
