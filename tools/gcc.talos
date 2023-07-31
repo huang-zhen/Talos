@@ -1,11 +1,15 @@
 #!/bin/bash
+LLVM_DIR=/data/public/llvm-3.8.0.src/build
+TALOS_DIR=/data/public/Talos
 if [ -z "$GCCLOG" ]; then
-	GCCLOG=/tmp/gcc.log
+	GCCLOG=gcc.log
 fi
 if [ -z "$OPTLOG" ]; then
-	OPTLOG=/tmp/opt.log
+	OPTLOG=opt.log
 fi
-
+if [ -z "$ANALYZER_CFG" ]; then
+	ANALYZER_CFG=$TALOS_DIR/analyzer.cfg
+fi
 function skipdirs {
     DIR=$1
     if [[ $DIR =~ .*elfhack ]]; then
@@ -17,32 +21,31 @@ function skipdirs {
 
 function skipfiles {
     FILE=$1
-    if [[ $FILE = 'conftest.c' ]] || [[ $FILE = 'conftest.C' ]]; then
-	return 1
-    else
+	for target in conftest.c conftest.C autotest.c
+	do
+    	if [[ $FILE = $target ]]; then
+			return 1
+		fi
+	done
 	return 0
-    fi
 }
 
 function analyze {
-   echo "analyze:$@" >> $GCCLOG
-   INS_PATH=$1
-   INS_DIR=${INS_PATH%/*}
-   INS_FILE=${INS_PATH##*/}
+   INP=$1
+   INS_FILE=$2
    shift
-   if [ "$INS_DIR" == "$INS_FILE" ]; then
-	INS_DIR=.
-   fi
-   CMD="$LLVMGCC -emit-llvm -g $@ -o $INS_DIR/.$INS_FILE.bc"
+   shift
+   CMD="$LLVMGCC -emit-llvm -fno-inline -g -o $INS_FILE $@"
    echo $CMD >>  $GCCLOG
-   $LLVMGCC -emit-llvm -g "$@" -o $INS_DIR/.$INS_FILE.bc 2>> $GCCLOG
+   $LLVMGCC -emit-llvm -g -o $INS_FILE $@ >> $GCCLOG
    if [[ $? -eq 0 ]]; then
-	CMD="$OPT -load $ANALYZER -Analyzer -o /dev/null $INS_DIR/.$INS_FILE.bc"
+	CMD="$OPT -load $LIBANALYZER -analyzer-output=$ANALYZER_OUTPUT -analyzer-config=$ANALYZER_CFG -Analyzer -o $INS_FILE.bc $INS_FILE"
 	echo $CMD >> $GCCLOG
-	$OPT -load $ANALYZER -Analyzer -o /dev/null $INS_DIR/.$INS_FILE.bc 2>>$OPTLOG
+	$OPT -load $LIBANALYZER -analyzer-output=$ANALYZER_OUTPUT -analyzer-config=$ANALYZER_CFG -Analyzer -o $INS_FILE.bc $INS_FILE 2>>$OPTLOG
 	if [[ $? -ne 0 ]]; then
 		echo "OPT failed on $INS_FILE" >>  $GCCLOG
-		#cp $INS_FILE $INS_FILE.bc
+		cp $INS_FILE $INS_FILE.bc
+		cp $INP /tmp/
 	fi
    else
 	echo "$LLVMGCC failed" >>  $GCCLOG
@@ -50,13 +53,10 @@ function analyze {
 }
 
 # Should verify the following pathnames are appropriate for the environment
-LLVMDIR=$HOME/code/llvm-3.4.2.src/build/Debug
-LLVMGCC=/usr/local/bin/clang
-GCC=/usr/bin/gcc-4.8
-OPT=/usr/local/bin/opt;
-LLC=llc;
-ANALYZER="$LLVMDIR/lib/libAnalyzer.so";
-#ANALYZER="$LLVMDIR/lib/libAnalyzer.dylib";
+LLVMGCC=$LLVM_DIR/bin/clang
+GCC=/usr/bin/gcc
+OPT=$LLVM_DIR/bin/opt
+LIBANALYZER=$LLVM_DIR/lib/LLVMAnalyzer.so
 #my $argn = @ARGV;
 COMPILE_ONLY=0;
 PREPROCESS_ONLY=0;
@@ -71,29 +71,35 @@ MF_OUT_IDX=-1;
 IN_FILE_ID=0;
 O_FILE_ID=0;
 INC_IDX=-1;
-LANG_IDX=-1
-SYS_IDX=-1
+INC2_IDX=-1;
+ARGS='';
+NARGS='';
 echo "@:$GCC $@" >>  $GCCLOG
 echo "PWD:`pwd`" >>  $GCCLOG
 I=0;
 OPTIMIZATION=0
-# ARGS: arguments without input file, output file and those clang dislikes
-ARGS='';
 for ARG in "$@"
 do
-   SKIP=0
+   #echo $ARG
+   if [[ $ARG = "-O1" ]]; then
+	OPTIMIZATION=1;
+   elif [[ $ARG = "-O2" ]]; then
+	OPTIMIZATION=2;
+   elif [[ $ARG = "-O3" ]]; then
+	OPTIMIZATION=3;
+   elif [[ $ARG = "-fhuge-objects" ]]; then
+	SKIP=1
+   elif [[ $ARG = "-Werror" ]]; then
+	SKIP=1
+   elif [[ $ARG = "-fstack-protector-strong" ]]; then
+	SKIP=1
+   elif [[ $ARG = "-Og" ]]; then
+	SKIP=1
+   else
+	NARGS=$NARGS" "$ARG
+   fi
    if [[ $ARG =~ ^-.* ]]; then
-   	if [[ $ARG = "-O1" ]]; then
-		OPTIMIZATION=1;
-   	elif [[ $ARG = "-O2" ]]; then
-		OPTIMIZATION=2;
-   	elif [[ $ARG = "-O3" ]]; then
-		OPTIMIZATION=3;
-   	elif [[ $ARG = "-fhuge-objects" ]]; then
-		SKIP=1
-   	elif [[ $ARG = "-Werror" ]]; then
-		SKIP=1
-	elif [[ $ARG = "--version" ]]; then
+	if [[ $ARG = "--version" ]]; then
 		VERSION_ONLY=1;
    	elif [[ $ARG = "-E" ]]; then
 		PREPROCESS_ONLY=1;
@@ -105,7 +111,6 @@ do
 		DEPENDENCY_ONLY=1;
    	elif [[ $ARG = "-c" ]]; then
 		COMPILE_ONLY=1;
-		ARGS=$ARGS" "$ARG
    	elif [[ $ARG = "-o" ]]; then
 		OUT_IDX=$(( $I + 1 ));
 		echo "OUT_IDX:$OUT_IDX" >>  $GCCLOG
@@ -118,11 +123,8 @@ do
 	elif [[ $ARG = "-include" ]]; then
 		INC_IDX=$(( $I + 1));
 		ARGS=$ARGS" "$ARG
-	elif [[ $ARG = "-x" ]]; then
-		LANG_IDX=$(( $I + 1));
-		ARGS=$ARGS" "$ARG
-	elif [[ $ARG = "-isystem" ]]; then
-		SYS_IDX=$(( $I + 1));
+	elif [[ $ARG = "-I" ]]; then
+		INC2_IDX=$(( $I + 1));
 		ARGS=$ARGS" "$ARG
 	else
 		ARGS=$ARGS" "$ARG
@@ -131,7 +133,7 @@ do
 	if [[ $I -eq $OUT_IDX ]]; then
 		OUT_FILE=$ARG;
 	else
-		if [[ $I -ne MT_OUT_IDX && $I -ne MT_OUT_IDX && $I -ne INC_IDX && $I -ne MF_OUT_IDX && $I -ne LANG_IDX && $I -ne SYS_IDX ]]; then
+		if [[ $I -ne MT_OUT_IDX && $I -ne MT_OUT_IDX && $I -ne INC_IDX && $I -ne INC2_IDX && $I -ne MF_OUT_IDX ]]; then
 			IN_FILE[$IN_FILE_ID]=$ARG;
 			IN_FILE_ID=$(( $IN_FILE_ID + 1 ))
 		else
@@ -146,45 +148,45 @@ done
 skipdirs $PWD
 if [[ $? -eq 1 ]]; then
    echo "Skipping directory $PWD" >> $GCCLOG
-   $GCC "$@"
+   $GCC $@
    exit
 fi
 skipfiles $IN_FILE
 if [[ $? -eq 1 ]]; then
    echo "Skipping file $IN_FILE" >> $GCCLOG
-   $GCC "$@"
+   `$GCC $@`
    exit
 fi
 if [[ $VERSION_ONLY -eq 1 ]]; then
    echo "Version only" >> $GCCLOG
-   $GCC "$@"
+   `$GCC $@`
    exit
 fi
 if [[ $IN_FILE_ID -eq 0 ]]; then
    echo "No infile" >> $GCCLOG
-   $GCC "$@"
+   `$GCC $@`
    exit
 fi
 if [[ $PREPROCESS_ONLY -eq 1 ]]; then
    echo "Preprocess only" >> $GCCLOG
-   $GCC "$@"
+   `$GCC $@`
    exit
 fi
 if [[ $GENERATE_ASSEMBLY_ONLY -eq 1 ]]; then
    echo "Generate assembly code only" >> $GCCLOG
-   $GCC "$@"
+   `$GCC $@`
    exit
 fi
 if [[ $DEPENDENCY_ONLY -eq 1 ]]; then
    echo "DEpendency only" >> $GCCLOG
-   $GCC "$@"
+   `$GCC $@`
    exit
 fi
 EXT=${IN_FILE##*.}
 echo "EXT:$EXT" >>  $GCCLOG
 if [[ $EXT = 's' ]]; then
    echo "Assembly code" >> $GCCLOG
-   $GCC "$@"
+   $GCC $@
    exit
 fi
 if [[ $OUT_FILE = '' ]]; then
@@ -196,14 +198,16 @@ if [[ $OUT_FILE = '' ]]; then
 	OUT_FILE="a.out";
    fi
 fi
+if [ -z "$ANALYZER_OUTPUT" ]; then
+	ANALYZER_OUTPUT=$OUT_FILE.talos
+fi
 echo "OUT_FILE:$OUT_FILE" >>  $GCCLOG
 echo "IN_FILE:${IN_FILE[@]}" >>  $GCCLOG
 echo "COMPILE_ONLY:$COMPILE_ONLY" >>  $GCCLOG
 echo "OPTIMIZATION:$OPTIMIZATION" >> $GCCLOG
 if [[ $COMPILE_ONLY -eq 1 ]]; then
    #analyze $OUT_FILE $@
-   analyze $OUT_FILE $ARGS ${IN_FILE[@]}
-   $GCC "$@"
+   analyze $IN_FILE $OUT_FILE $NARGS
 else
    HAS_SOURCE=0
    for FILE in "${IN_FILE[@]}"
@@ -214,7 +218,7 @@ else
 		#analyze ${FILE%.*}".o" $ARGS -c $FILE
 		#O_FILE[$O_FILE_ID]=${FILE%.*}".o"
 		O_BASE=`basename $FILE`
-		analyze ${O_BASE%.*}".o" $ARGS -c $FILE
+		analyze $IN_FILE ${O_BASE%.*}".o" $ARGS -c $FILE
 		O_FILE[$O_FILE_ID]=${O_BASE%.*}".o"
 		O_FILE_ID=$(( $O_FILE_ID + 1 ))
 	else
@@ -223,6 +227,6 @@ else
 		O_FILE_ID=$(( $O_FILE_ID + 1 ))
 	fi
    done
-   echo "$GCC $@" >>  $GCCLOG
-   $GCC "$@"
 fi
+echo "$GCC $@" >>  $GCCLOG
+`$GCC $@`
