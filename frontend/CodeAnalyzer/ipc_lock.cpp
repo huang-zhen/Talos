@@ -12,16 +12,31 @@
 #include <sys/types.h>
 #include "ipc_lock.h"
 
+unsigned long
+hash(const char *str)
+{
+    unsigned long hash = 5381;
+    unsigned int c;
+
+    while (c = *(str++))
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+
+    return hash;
+}
+
 IPC_Lock::IPC_Lock(const char *name) {
+	char hashstr[11]; // #digits of long plus 1
+	snprintf(hashstr, sizeof(hashstr), "%d", hash(name));
 	ptr = NULL;
 #if 1
-	fd = shm_open(name, O_CREAT|O_RDWR|O_EXCL, 0644);
+	std::cerr << "IPC lock " << hashstr << " (" <<	name << ")" << std::endl;
+	fd = shm_open(hashstr, O_CREAT|O_RDWR|O_EXCL, 0644);
 	if (fd == -1) {
 		if (errno != EEXIST) {
-			std::cerr << "shm_open failed with " << errno << std::endl;
+			std::cerr << "shm_open " << hashstr << " failed with " << errno << std::endl;
 			return;
 		}
-		fd = shm_open(name, O_RDWR, 0644);
+		fd = shm_open(hashstr, O_RDWR, 0644);
 		sz = sizeof(sem_t);
 		ftruncate(fd, sz);
 		ptr = mmap(0, sz, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
