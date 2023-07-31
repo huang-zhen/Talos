@@ -1,0 +1,33 @@
+#!/bin/bash
+# talos_analyze - runs CodeAnalyzer on .bc file
+TALOS_DIR=/data/public/Talos
+LLVM_DIR=/data/public/llvm-3.8.0.src/build
+LIBANALYZER=$LLVM_DIR/lib/LLVMAnalyzer.so
+BCFILE=$1
+if [ $# -ne 1 ]; then
+	echo "Usage: $0 file.bc"
+	exit
+fi
+if [ ! -e $BCFILE ]; then
+	echo "Error: $BCFILE does not exist!"
+	exit
+fi
+if [ -e $BCFILE.talos ]; then
+	echo "$BCFILE.talos already exists"
+	read -p "Delete it (y/n)? " yn
+	if [ "$yn" = "y" ]; then
+		rm $BCFILE.talos
+	fi
+fi
+if [ -e $BCFILE.lines ]; then
+	echo "$BCFILE.lines already exists"
+	read -p "Delete it (y/n)? " yn
+	if [ "$yn" = "y" ]; then
+		rm $BCFILE.lines
+	fi
+fi
+$LLVM_DIR/bin/opt -load $LIBANALYZER -analyzer-output=$BCFILE.talos -analyzer-config=$TALOS_DIR/analyzer.cfg -Analyzer -o /dev/null $BCFILE 2>opt.log
+if [ $? -ne 0 ]; then
+	echo "Analyze failed!"
+fi
+grep "Analyzed" opt.log|sort|uniq > $BCFILE.lines
