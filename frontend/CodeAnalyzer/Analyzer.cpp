@@ -2272,12 +2272,13 @@ namespace {
 		std::string funcName = decorateInternalName(F);
 		DEBUG(errrawout << "findConstReturn: " << funcName << '\n');
 		const_returns.clear();
-	    for (Function::iterator bb=F->begin(), bbEnd=F->end(); bb != bbEnd; ++bb){
+	    for (Function::iterator bb=F->begin(), bbEnd=F->end(); bb != bbEnd; ++bb) {
 			if (bb->empty())
 				continue;
 			Instruction *inst = &bb->back();
-			if (ReturnInst *retInst = dyn_cast<ReturnInst>(inst))
+			if (ReturnInst *retInst = dyn_cast<ReturnInst>(inst)) {
 				ret = checkReturn(funcName, retInst);
+			}
 		}
 		return ret;
 	}
