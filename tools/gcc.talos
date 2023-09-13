@@ -1,6 +1,12 @@
 #!/bin/bash
-LLVM_DIR=/data/public/llvm-3.8.0.src/build
-TALOS_DIR=/data/public/Talos
+if [ -z "$TALOS_DIR" ]; then
+	echo "Error: TALOS_DIR not set!"
+	exit
+fi
+if [ -z "$LLVM_DIR" ]; then
+	echo "Error: LLVM_DIR not set!"
+	exit
+fi
 if [ -z "$GCCLOG" ]; then
 	GCCLOG=gcc.log
 fi

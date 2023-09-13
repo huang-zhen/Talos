@@ -1,8 +1,7 @@
 #!/bin/bash
-TALOS_DIR=/data/public/Talos
 echo "Running Talos..."
 if [ -z "$TALOS_DIR" ]; then
-    echo "TALOS_DIR envirnoment variable is not set"
+    echo "Error: TALOS_DIR not set"
     exit
 fi
 if [ $# -lt 3 ]; then

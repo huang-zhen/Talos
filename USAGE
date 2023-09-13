@@ -3,17 +3,23 @@ Talos consists of a front end, Talos analyzer, and a backend. The frontend is a 
 [frontend]
 
 1. set up TALOS_DIR
+The $TALOS_DIR should contain the configuration file for Talos, analyzer.cfg
+
 $ export TALOS_DIR=/data/public/Talos
 
-You may want to add the above command to your ~/.bashrc file so the command will be executed automatically each time you login.
+2. set up LLVM_DIR
+The Talos analyzer is an LLVM pass that runs with LLVM's opt command. You'll need to set up LLVM_DIR to point to your the LLVM directory where LLVM commands can be found, e.g. ~/code/llvm-3.8.0.src/build.
 
-2. configure the project with Talos analyzer as the compiler
+You may want to add the above commands to your ~/.bashrc file so the command will be executed automatically each time you login.
+
+3. configure the code project with Talos analyzer as the compiler
+$ cd project
 $ CC=$TALOS_DIR/gcc.talos CXX=$TALOS_DIR/g++.talos ./configure
 
-3. set up the full pathname for the output file of Talos analyzer
+4. set up the full pathname for the output file of Talos analyzer
 $ export ANALYZER_OUTPUT=/home/user/prog.talos
 
-4. build the project with gcc.talos
+5. build the project with gcc.talos
 $ make clean
 $ make
 
@@ -23,6 +29,7 @@ The output of Talos analyzer would be in the file $ANALYZER_OUTPUT.
 Example usage for tiff-3.8.2
 1. set up settings for Talos analyzer
 $ export TALOS_DIR=/data/public/Talos
+$ export LLVM_DIR=/data/public/llvm-3.8.0.src
 $ export ANALYZER_OUTPUT=/home/user/tiff-3.8.2/tiff.talos
 
 2. configure the tiff project
