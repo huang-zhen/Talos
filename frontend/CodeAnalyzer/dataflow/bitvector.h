@@ -20,7 +20,7 @@ public:
 	void diff(const Bitvector& bv);
 	void intersect(const Bitvector& bv);
 	void print() const;
-	Bitvector& operator=(const Bitvector& bv);
+	void operator=(const Bitvector& bv);
 	bool operator!=(const Bitvector& bv);
 	bool operator==(const Bitvector& bv);
 	std::string tostring() const;

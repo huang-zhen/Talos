@@ -76,7 +76,7 @@ void Bitvector::diff(const Bitvector& bv)
 	}
 }
 
-Bitvector& Bitvector::operator=(const Bitvector& bv)
+void Bitvector::operator=(const Bitvector& bv)
 {
 	//assert(m_bsize == bv.m_bsize);
 	//for (int i = 0; i < m_size; i++)
