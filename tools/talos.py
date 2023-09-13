@@ -1360,6 +1360,38 @@ def find_diversion_for_BB(BB):
 	#	print >> sys.stderr, 'There is no diversion for', get_name_for_BB(BB)
 	return minDepGroup
 
+def find_return_value(lineNo, line):
+	retVal = None
+	tokens = line.split()
+	foundReturn = False
+	for idx in range(len(tokens)):
+		if tokens[idx] == 'return':
+			foundReturn = True
+			print('\tFound return at line', lineNo, file=sys.stderr)
+			break
+	if foundReturn:
+		retVal = tokens[idx + 1]
+		if retVal == ';':
+			retVal = None
+			print('\t\treturn statement has no return value', file=sys.stderr)
+		else:
+			if retVal == '(':
+				idx += 1
+				retVal = tokens[idx + 1]
+			if retVal[0] == '(':
+				retVal = retVal[1:]
+			if retVal[-1] == ';':
+				retVal = retVal[:-1]
+				print('\t\treturn value', retVal, file=sys.stderr)
+			elif tokens[idx + 2] == ';':
+				print('\t\treturn value', retVal, file=sys.stderr)
+			else:
+				retVal = None
+				print('\t\tError: return statement does not end with semi-colon', file=sys.stderr)
+	else:
+		print('\t\tError: no return statement is found at line', lineNo, file=sys.stderr)
+	return retVal
+
 def	identify_const_macro(func, BB, ret_value):
 	print('identify_const_macro', func, file=sys.stderr)
 	global ConstMacros, FunctionLines
@@ -1374,22 +1406,11 @@ def	identify_const_macro(func, BB, ret_value):
 	if lineNo >= len(lines):
 		print('\tError: line number', lineNo, 'for function', func, 'does not exist in', fileName, file=sys.stderr)
 		return
-	tokens = lines[lineNo - 1].split()
-	foundReturn = False
-	for idx in range(len(tokens)):
-		if tokens[idx] == 'return':
-			foundReturn = True
-			print('\tFound return at line', lineNo, file=sys.stderr);
-			break
-	if foundReturn:
-		retVal = tokens[idx + 1]
-		if retVal[-1] == ';':
-			retVal = retVal[:-1]
-		print('\t\treturn value', retVal, file=sys.stderr);
-		if retVal[0] not in '0123456789':
-			print("\tIdentified macro", retVal, "as", ret_value, file=sys.stderr)
-			print('\tline', lineNo, 'for function', func, 'in file', fileName, file=sys.stderr)
-			ConstMacros[retVal] = ret_value
+	retVal = find_return_value(lineNo, lines[lineNo - 1])
+	if retVal and (retVal[0] not in '0123456789'):
+		print("\tIdentified macro", retVal, "as", ret_value, file=sys.stderr)
+		print('\tline', lineNo, 'for function', func, 'in file', fileName, file=sys.stderr)
+		ConstMacros[retVal] = ret_value
 	else:
 		print("\tError: can't find return at", lineNo, "in", fileName, file=sys.stderr)
 
