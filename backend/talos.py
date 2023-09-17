@@ -1929,7 +1929,7 @@ def indirect_error_propagation():
 			continue
 		print ('\t', func, file = sys.stderr)
 		for BB in ConstReturns[func]:
-                        ret_val = ConstReturns[func][BB][0]
+			ret_val = ConstReturns[func][BB][0]
 			print ('\t\t', get_name_for_BB(BB), ret_val, file = sys.stderr)
 			done = False
 			if BB in BBDependency:
