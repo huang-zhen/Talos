@@ -63,6 +63,7 @@ def get_BB2(fileID, functionID, line, BB):
 
 # kind: 1 - error logging/handling, 3 - pointer returnning, 4 - propagation, 5 - special constant return
 def add_error_return(kind, func, BB, ret_value):
+	global ErrorReturns, ConstReturns
 	print ('\t', 'add_error_return', func, BB, ret_value, 'kind(', kind, ')', file = sys.stderr)
 	if ret_value == '' or ret_value == 'None':
 		print('\tError: empty ret_value', file = sys.stderr)
@@ -72,7 +73,11 @@ def add_error_return(kind, func, BB, ret_value):
 	if not kind in ErrorReturns[func]:
 		ErrorReturns[func][kind] = []
 	if not (BB, ret_value) in ErrorReturns[func][kind]:
-		ErrorReturns[func][kind].insert(0, (BB, ret_value))	
+		ErrorReturns[func][kind].insert(0, (BB, ret_value))
+		if func in ConstReturns:
+			if BB in ConstReturns[func]:
+				ConstReturns[func][BB][1] = 1
+                
 
 # return the BB for an error return
 def get_error_return_BB(func):
@@ -283,7 +288,7 @@ def pass1(InputFile):
 		elif callType == 7:
 			if not functionName in ConstReturns:
 				ConstReturns[functionName] = {}
-			ConstReturns[functionName][BB] = (parts[8], 0)
+			ConstReturns[functionName][BB] = [parts[8], 0]
 			if parts[8] == 'NULL':
 				add_error_return(3, functionName, BB, 'NULL')
 			if parts[8] == '4294967295':
@@ -2593,6 +2598,17 @@ def load_API_errors(APIErrorSpec):
 			add_error_return(0, parts[0], None, int(parts[1], 0))
 	inp.close()
 
+def check_identified_constants():
+	total = 0
+	identified = 0
+	for func in ConstReturns:
+		for BB in ConstReturns[func]:
+			total += 1
+			if ConstReturns[func][BB][1] == 1:
+				identified += 1
+	print("Constant return values")
+	print("\tTotal: {} Identified: {}".format(total, identified))
+
 # main function
 start_time = time.time()
 
@@ -2953,6 +2969,7 @@ if AddSecuritySetting:
 if AddExecLog:
 	add_exec_log_code_all(AddExecLog)
 
+check_identified_constants()
 end_time = time.time()
 print ('Analyze time:', end_time - start_time)
 
