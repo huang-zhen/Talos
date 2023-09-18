@@ -77,6 +77,9 @@ def add_error_return(kind, func, BB, ret_value):
 		if func in ConstReturns:
 			if BB in ConstReturns[func]:
 				ConstReturns[func][BB][1] = 1
+				if ConstReturns[func][BB][2]:
+					name = ConstReturns[func][BB][2]
+					IdentifiedMacros[name] = (func, BB)
 
 # return the BB for an error return
 def get_error_return_BB(func):
@@ -1398,7 +1401,7 @@ def find_return_value(lineNo, line):
 
 def	identify_const_macro(func, BB, ret_value):
 	print('identify_const_macro', func, file=sys.stderr)
-	global ConstMacros, FunctionLines
+	global FunctionLines
 	fileName = FunctionLines[func][3]
 	lineNo = int(BBref[BB][1])
 	if not FunctionLines[func][5]:
@@ -1414,7 +1417,6 @@ def	identify_const_macro(func, BB, ret_value):
 	if retVal and (retVal[0] not in '0123456789'):
 		print("\tIdentified macro", retVal, "as", ret_value, file=sys.stderr)
 		print('\tline', lineNo, 'for function', func, 'in file', fileName, file=sys.stderr)
-		ConstMacros[retVal] = ret_value
 	else:
 		print("\tError: can't find return at", lineNo, "in", fileName, file=sys.stderr)
 	return retVal
@@ -1888,14 +1890,14 @@ def find_workaround_all(verbose):
 def find_error_return_for_func_all():
 	funcs = []
 	for func in FunctionLines:
+		if func in ConstReturns:
+			for BB in ConstReturns[func]:
+				ConstReturns[func][BB][2] = identify_const_macro(func, BB, ConstReturns[func][BB][0])
 	#	if func in ReachableFuncs:
 	#		if find_error_return_for_func(func):
 	#			funcs.append(func)
 		if find_error_return_for_func(func):
 			funcs.append(func)
-		if func in ConstReturns:
-			for BB in ConstReturns[func]:
-				ConstReturns[func][BB][2] = identify_const_macro(func, BB, ConstReturns[func][BB][0])
 	print (len(funcs), 'functions has error return')
 	return funcs
 
@@ -2605,18 +2607,24 @@ def check_identified_constants():
 	identified = 0
 	macros = 0
 	identified_macros = 0
+	can_be_identified = 0
+	can_increase_coverage = {}
 	for func in ConstReturns:
 		for BB in ConstReturns[func]:
 			total += 1
 			if ConstReturns[func][BB][2]:
+				name = ConstReturns[func][BB][2]
 				macros += 1
-			if ConstReturns[func][BB][1] == 1:
-				identified += 1
-			if ConstReturns[func][BB][2] and ConstReturns[func][BB][1] == 1:
-				identified_macros += 1
+				if ConstReturns[func][BB][1] == 1:
+					identified_macros += 1
+				elif name in IdentifiedMacros:
+					can_be_identified += 1
+					if func != IdentifiedMacros[name][0]:
+						if not func in ErrorReturns:
+							can_increase_coverage[func] = 1
 	print("Constant return values")
 	print("\tTotal: {} Identified: {}".format(total, identified))
-	print("\tMacros: {} Identified: {}".format(macros, identified_macros))
+	print("\tMacros: {} Identified: {} Can be Identified: {} Can improve coverage: {}".format(macros, identified_macros, can_be_identified, len(can_increase_coverage)))
 
 # main function
 start_time = time.time()
@@ -2674,7 +2682,7 @@ ProtectedFuncNumber = {}
 ProtectedFuncRef = {}
 ProtectedByCaller = []
 ExecFuncNumber = {}
-ConstMacros = {}
+IdentifiedMacros = {}
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-P', dest='pattern', help='Pattern to match setting names', nargs=1)
