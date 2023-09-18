@@ -77,7 +77,6 @@ def add_error_return(kind, func, BB, ret_value):
 		if func in ConstReturns:
 			if BB in ConstReturns[func]:
 				ConstReturns[func][BB][1] = 1
-                
 
 # return the BB for an error return
 def get_error_return_BB(func):
@@ -288,7 +287,7 @@ def pass1(InputFile):
 		elif callType == 7:
 			if not functionName in ConstReturns:
 				ConstReturns[functionName] = {}
-			ConstReturns[functionName][BB] = [parts[8], 0]
+			ConstReturns[functionName][BB] = [parts[8], 0, None]
 			if parts[8] == 'NULL':
 				add_error_return(3, functionName, BB, 'NULL')
 			if parts[8] == '4294967295':
@@ -1418,6 +1417,7 @@ def	identify_const_macro(func, BB, ret_value):
 		ConstMacros[retVal] = ret_value
 	else:
 		print("\tError: can't find return at", lineNo, "in", fileName, file=sys.stderr)
+	return retVal
 
 def find_error_return_for_func(func):
 	print ('find_error_return_for_func', func, file = sys.stderr)
@@ -1442,7 +1442,6 @@ def find_error_return_for_func(func):
 					FunctionLines[func][2] = -earliestLine
 					print ('\t', 'updated earliestReturn', earliestReturn, file = sys.stderr)
 				add_error_return(1, func, BB, ret_value)
-				identify_const_macro(func, BB, ret_value)
 	else:
 		print ('\t', func, 'has no callees', file = sys.stderr)
 	if earliestReturn:
@@ -1894,6 +1893,9 @@ def find_error_return_for_func_all():
 	#			funcs.append(func)
 		if find_error_return_for_func(func):
 			funcs.append(func)
+		if func in ConstReturns:
+			for BB in ConstReturns[func]:
+				ConstReturns[func][BB][2] = identify_const_macro(func, BB, ConstReturns[func][BB][0])
 	print (len(funcs), 'functions has error return')
 	return funcs
 
@@ -2601,13 +2603,20 @@ def load_API_errors(APIErrorSpec):
 def check_identified_constants():
 	total = 0
 	identified = 0
+	macros = 0
+	identified_macros = 0
 	for func in ConstReturns:
 		for BB in ConstReturns[func]:
 			total += 1
+			if ConstReturns[func][BB][2]:
+				macros += 1
 			if ConstReturns[func][BB][1] == 1:
 				identified += 1
+			if ConstReturns[func][BB][2] and ConstReturns[func][BB][1] == 1:
+				identified_macros += 1
 	print("Constant return values")
 	print("\tTotal: {} Identified: {}".format(total, identified))
+	print("\tMacros: {} Identified: {}".format(macros, identified_macros))
 
 # main function
 start_time = time.time()
